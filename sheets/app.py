@@ -3,7 +3,7 @@ import json
 import os
 import sys
 
-from PySide6.QtCore import QByteArray, Qt
+from PySide6.QtCore import QByteArray, Qt, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication
@@ -11,13 +11,14 @@ from PySide6.QtWidgets import QApplication
 SERVER_NAME = "SheetsSpreadsheetApp-" + os.environ.get("USERNAME", "user")
 
 
-def _forward(paths):
-    """If Sheets is already running, send it our files and return True."""
+def _forward(paths, quit_app=False):
+    """If Sheets is already running, send it our files (or a quit request) and return True."""
     sock = QLocalSocket()
     sock.connectToServer(SERVER_NAME)
     if not sock.waitForConnected(300):
         return False
-    sock.write(json.dumps({"open": paths}).encode("utf-8"))
+    msg = {"quit": True} if quit_app else {"open": paths}
+    sock.write(json.dumps(msg).encode("utf-8"))
     sock.flush()
     sock.waitForBytesWritten(1000)
     sock.disconnectFromServer()
@@ -44,12 +45,25 @@ def _start_server(on_paths):
                 msg = json.loads(bytes(buf).decode("utf-8") or "{}")
             except ValueError:
                 msg = {}
-            on_paths(msg.get("open", []))
+            if msg.get("quit"):
+                QTimer.singleShot(0, quit_all)
+            else:
+                on_paths(msg.get("open", []))
             conn.deleteLater()
         conn.readyRead.connect(read)
         conn.disconnected.connect(done)
     server.newConnection.connect(on_conn)
     return server
+
+
+def quit_all():
+    """Close every window the normal way, so unsaved work still gets the Save? prompt."""
+    from .ui.mainwindow import WINDOWS
+    for w in list(WINDOWS):
+        w.raise_()
+        w.activateWindow()
+        if not w.close():
+            return
 
 
 def open_paths(paths):
@@ -85,6 +99,9 @@ def main(argv=None):
     app = QApplication(sys.argv[:1])
     app.setApplicationName("Sheets")
     app.setOrganizationName("Sheets")
+    if "--quit" in argv:  # ask a running copy to close (used by App Launcher's Stop)
+        _forward([], quit_app=True)
+        return 0
     if "--new-instance" not in argv and _forward(paths):
         return 0
     from .ui.mainwindow import app_icon
