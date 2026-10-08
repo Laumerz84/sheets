@@ -1,0 +1,46 @@
+# Sheets
+
+A lightweight Excel-style spreadsheet for Windows: view and edit CSV and Excel files without Excel.
+
+## Run
+
+- Start menu: **Sheets**
+- Or: `G:\Sheets\.venv\Scripts\pythonw.exe G:\Sheets\launch.pyw [file ...]`
+- Double-click a file after registering file types (File → *Make Sheets the default for CSV/Excel files...*),
+  or run `.venv\Scripts\python.exe -m sheets.register` (`--remove` to undo).
+
+Only one copy runs at a time: opening another file hands it to the running app (new window per workbook).
+
+## Files
+
+| Format | Open | Save |
+| --- | --- | --- |
+| `.xlsx` / `.xlsm` | values, formulas, formatting, merges, widths, freeze panes, filters, conditional formatting (display) | yes; keeps comments, data validation, conditional formatting, defined names of the original file |
+| `.xls` (Excel 97-2003) | values + formatting (formulas come in as values) | saves as `.xlsx` |
+| `.csv` / `.tsv` / `.txt` | auto-detects delimiter and encoding; keeps leading zeros and long IDs as text | yes, same delimiter/encoding as opened |
+| HTML tables named `.xls` | yes (common bank/web export) | saves as `.xlsx` |
+
+Charts and pictures in xlsx files can't be kept; Sheets warns before saving over such a file.
+
+## Features
+
+Excel-like grid (frozen panes, merged cells, overflow text, wrap, borders, fills, number formats),
+180 functions (SUM/IF/VLOOKUP/XLOOKUP/INDEX/MATCH/SUMIFS/TEXT/dates...), click-to-reference and
+arrow-key pointing while typing formulas, F4 for `$`, function autocomplete and hints, fill handle
+(series: numbers, dates, months, "Item 1"), copy/paste with Excel (TSV) and relative formula shifting,
+paste values/formats/transposed, undo/redo for everything, sort (multi-level), AutoFilter with value
+lists and conditions, find/replace across sheets, remove duplicates, format painter, AutoSum, insert/delete/
+hide rows and columns, autofit, multiple sheets, zoom, status-bar Sum/Average/Count.
+
+Keyboard shortcuts follow Excel; Help → Keyboard Shortcuts (F1) lists them.
+
+## Development
+
+```
+.venv\Scripts\python.exe -m pytest            # tests (offscreen Qt)
+.venv\Scripts\python.exe tools\snapshot.py out.png [file]   # render the window to a PNG
+.venv\Scripts\python.exe -u tools\bench.py 200000           # performance check
+```
+
+Code: `sheets/` engine (formula parser/evaluator, number formats, workbook model, file I/O),
+`sheets/ui/` PySide6 interface (custom grid widget in `grid.py`).

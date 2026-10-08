@@ -1,0 +1,7 @@
+/.venv/
+/.pip-cache/
+/.pytest-tmp/
+/.shots/
+__pycache__/
+*.pyc
+
