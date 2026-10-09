@@ -2,6 +2,7 @@
 from PySide6.QtWidgets import (QCheckBox, QDialog, QDialogButtonBox, QLabel,
                                QListWidget, QListWidgetItem, QVBoxLayout)
 from PySide6.QtCore import Qt
+from PySide6.QtWidgets import QHeaderView, QTableWidget, QTableWidgetItem
 
 from .. import ops
 from ..refs import col_name, key
@@ -100,3 +101,37 @@ def dedupe_states(sheet, rect, cols, header):
         for c in range(c1, c2 + 1):
             states[key(dst, c)] = (None, DEFAULT_STYLE)
     return states, removed, len(keep)
+
+
+class WishlistDialog(QDialog):
+    """Excel features Sheets doesn't have yet, most-wanted (most tried via KeyTips) first."""
+
+    def __init__(self, parent):
+        super().__init__(parent)
+        from .keytips import KEYTIPS, load_tried
+        self.setWindowTitle("Feature Wishlist")
+        self.resize(900, 560)
+        lay = QVBoxLayout(self)
+        lay.addWidget(QLabel("Excel features Sheets doesn't have yet. Pressing one of their KeyTips counts as a "
+                             "vote; Claude asks about the most-wanted ones when you work on Sheets."))
+        tried = load_tried()
+        rows = [(seq, label, excel, tried.get(seq, {}).get("count", 0))
+                for seq, label, action, excel in KEYTIPS if action is None]
+        rows.sort(key=lambda r: (-r[3], r[1]))
+        table = QTableWidget(len(rows), 4)
+        table.setHorizontalHeaderLabels(["Tried", "KeyTip", "Feature", "What it does in Excel"])
+        table.verticalHeader().setVisible(False)
+        table.setEditTriggers(QTableWidget.NoEditTriggers)
+        table.setWordWrap(True)
+        for i, (seq, label, excel, n) in enumerate(rows):
+            for j, text in enumerate((str(n) if n else "", "Alt " + " ".join(seq), label, excel)):
+                table.setItem(i, j, QTableWidgetItem(text))
+        h = table.horizontalHeader()
+        for j in range(3):
+            h.setSectionResizeMode(j, QHeaderView.ResizeToContents)
+        h.setSectionResizeMode(3, QHeaderView.Stretch)
+        table.resizeRowsToContents()
+        lay.addWidget(table)
+        bb = QDialogButtonBox(QDialogButtonBox.Close)
+        bb.rejected.connect(self.reject)
+        lay.addWidget(bb)

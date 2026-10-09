@@ -123,6 +123,8 @@ class MainWindow(QMainWindow):
         self._build_central()
         self._build_statusbar()
         self._connect_grid()
+        from .keytips import KeyTipController
+        self.keytips = KeyTipController(self)
 
         self.stats_timer = QTimer(self)
         self.stats_timer.setSingleShot(True)
@@ -292,6 +294,7 @@ class MainWindow(QMainWindow):
         self.addAction(self.a_claude)
         self.a_shortcuts = A("&Keyboard Shortcuts", self.show_shortcuts, "F1")
         self.a_about = A("&About Sheets", self.about)
+        self.a_wishlist = A("Feature &Wishlist...", self.show_wishlist)
         self.a_register = A("Make Sheets the default for CSV/Excel files...", self.register_file_types)
 
     def _build_menus(self):
@@ -380,6 +383,7 @@ class MainWindow(QMainWindow):
 
         m = mb.addMenu("&Help")
         m.addAction(self.a_shortcuts)
+        m.addAction(self.a_wishlist)
         m.addAction(self.a_about)
 
     def _tool_button(self, icon, tip, menu=None, slot=None, text=None):
@@ -2315,6 +2319,8 @@ class MainWindow(QMainWindow):
     def show_shortcuts(self):
         text = """
 <table cellpadding=3>
+<tr><td><b>Alt, then letters</b></td><td>Excel KeyTips, e.g. Alt H O I autofit columns, Alt E S V paste values
+(a hint strip shows the next letters)</td></tr>
 <tr><td><b>Ctrl+N / O / S</b></td><td>New, Open, Save (F12 Save As)</td></tr>
 <tr><td><b>Ctrl+Z / Ctrl+Y</b></td><td>Undo / Redo</td></tr>
 <tr><td><b>Ctrl+X / C / V</b></td><td>Cut, Copy, Paste &nbsp; (Ctrl+Shift+V paste values)</td></tr>
@@ -2344,6 +2350,10 @@ class MainWindow(QMainWindow):
         box.setTextFormat(Qt.RichText)
         box.setText(text)
         box.exec()
+
+    def show_wishlist(self):
+        from .extras import WishlistDialog
+        WishlistDialog(self).exec()
 
     def about(self):
         QMessageBox.about(self, "About Sheets",
