@@ -133,6 +133,12 @@ class MainWindow(QMainWindow):
         WINDOWS.append(self)
         QTimer.singleShot(0, self.grid.setFocus)
 
+    def showEvent(self, e):
+        super().showEvent(e)
+        if not getattr(self, "_identity_set", False):
+            from ..winshell import set_window_identity
+            self._identity_set = set_window_identity(self.winId())
+
     # ================================================================ building
     def _act(self, text, slot, shortcut=None, icon=None, checkable=False, tip=None):
         a = QAction(text, self)
