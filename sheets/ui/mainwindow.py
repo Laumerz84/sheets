@@ -38,6 +38,7 @@ APP_NAME = "Sheets"
 WINDOWS = []
 SETTINGS_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Sheets")
 SETTINGS_FILE = os.path.join(SETTINGS_DIR, "settings.json")
+DEFAULT_FOLDER = r"G:\Spreadsheets"  # used until the user picks one (File > Set Default Folder)
 
 NUMBER_PRESETS = [
     ("General", "General"), ("Number", "0.00"), ("Currency", "$#,##0.00"),
@@ -167,6 +168,8 @@ class MainWindow(QMainWindow):
         self.a_open = A("&Open...", self.file_open, "Ctrl+O", G(S.G_OPEN))
         self.a_save = A("&Save", self.file_save, "Ctrl+S", G(S.G_SAVE))
         self.a_saveas = A("Save &As...", self.file_save_as, ["F12", "Ctrl+Shift+S"])
+        self.a_default_dir = A("Set &Default Folder...", self.set_default_folder,
+                               tip="Choose the folder Open and Save As start in")
         self.a_close = A("&Close", self.close, "Ctrl+W")
         self.a_exit = A("E&xit", self.quit_all)
         self.a_undo = A("&Undo", self.do_undo, "Ctrl+Z", G(S.G_UNDO))
@@ -286,6 +289,7 @@ class MainWindow(QMainWindow):
         m.addAction(self.a_save)
         m.addAction(self.a_saveas)
         m.addSeparator()
+        m.addAction(self.a_default_dir)
         m.addAction(self.a_register)
         m.addSeparator()
         m.addAction(self.a_close)
@@ -2070,26 +2074,35 @@ class MainWindow(QMainWindow):
         for i, p in enumerate(recent[:12]):
             self.recent_menu.addAction(f"&{i + 1}  {p}", lambda path=p: self.open_path(path))
 
-    def _remember(self, path, saved=False):
+    def _remember(self, path):
         s = load_settings()
         rec = [p for p in s.get("recent", []) if os.path.normcase(p) != os.path.normcase(path)]
         rec.insert(0, path)
         s["recent"] = rec[:15]
         s["last_dir"] = os.path.dirname(path)
-        if saved:
-            s["save_dir"] = os.path.dirname(path)
         save_settings(s)
         self.settings = s
 
     def default_dir(self):
-        """Where Open / Save As start: the folder you last saved to, else the last one
-        you opened from, else Documents."""
-        s = load_settings()  # fresh: another window may have saved since
-        for d in (s.get("save_dir"), s.get("last_dir")):
-            if d and os.path.isdir(d):
-                return d
-        from PySide6.QtCore import QStandardPaths
-        return QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation) or os.path.expanduser("~")
+        """Where Open / Save As start: the folder set with File > Set Default Folder,
+        else DEFAULT_FOLDER (created on first use), else Documents."""
+        d = load_settings().get("default_dir") or DEFAULT_FOLDER  # fresh: may be changed in another window
+        try:
+            os.makedirs(d, exist_ok=True)
+            return d
+        except OSError:
+            from PySide6.QtCore import QStandardPaths
+            return QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation) or os.path.expanduser("~")
+
+    def set_default_folder(self):
+        d = QFileDialog.getExistingDirectory(self, "Default folder for Open and Save As", self.default_dir())
+        if not d:
+            return
+        s = load_settings()
+        s["default_dir"] = os.path.normpath(d)
+        save_settings(s)
+        self.settings = s
+        self.statusBar().showMessage(f"Open and Save As will now start in {os.path.normpath(d)}", 5000)
 
     def file_new(self):
         w = MainWindow(new_workbook())
@@ -2208,7 +2221,7 @@ class MainWindow(QMainWindow):
             return False
         QApplication.restoreOverrideCursor()
         self.undo.setClean()
-        self._remember(path, saved=True)
+        self._remember(path)
         self.update_title()
         self.statusBar().showMessage(f"Saved {path}", 4000)
         return True

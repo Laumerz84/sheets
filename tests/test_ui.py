@@ -470,13 +470,15 @@ def test_undo_while_editing_cancels_edit(win, app):
     assert val(win, "A4") == "r4"
 
 
-def test_open_dialog_starts_in_last_save_folder(win, app, tmp_path):
-    saved = tmp_path / "saved_here"
-    opened = tmp_path / "opened_here"
-    saved.mkdir()
-    opened.mkdir()
+def test_default_folder(win, app, tmp_path, monkeypatch):
+    target = tmp_path / "Spreadsheets"
+    monkeypatch.setattr(mw, "DEFAULT_FOLDER", str(target))
+    assert win.default_dir() == str(target) and target.is_dir()  # created on first use
+    chosen = tmp_path / "mine"
+    chosen.mkdir()
+    from PySide6.QtWidgets import QFileDialog
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: str(chosen)))
+    win.set_default_folder()
     put(win, "A1", "x")
-    assert win.do_save(str(saved / "a.csv"))
-    (opened / "b.csv").write_text("1,2\n")
-    win.open_path(str(opened / "b.csv"))
-    assert win.default_dir() == str(saved)
+    assert win.do_save(str(tmp_path / "elsewhere.csv"))
+    assert win.default_dir() == str(chosen)  # saving elsewhere doesn't change it
