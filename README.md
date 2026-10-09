@@ -1,12 +1,14 @@
 # Sheets
 
 A lightweight Excel-style spreadsheet for Windows: view and edit CSV and Excel files without Excel.
+On this PC it shows as **Exkel** (window title, Start menu, About); the package, folder, settings
+(`%APPDATA%\Sheets`) and app id stay "Sheets".
 
 ## Run
 
-- Start menu: **Sheets**
+- Start menu: **Exkel**
 - Or: `G:\Sheets\.venv\Scripts\pythonw.exe G:\Sheets\launch.pyw [file ...]`
-- Double-click a file after registering file types (File → *Make Sheets the default for CSV/Excel files...*),
+- Double-click a file after registering file types (File → *Make Exkel the default for CSV/Excel files...*),
   or run `.venv\Scripts\python.exe -m sheets.register` (`--remove` to undo).
 
 Only one copy runs at a time: opening another file hands it to the running app (new window per workbook).

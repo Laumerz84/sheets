@@ -29,7 +29,7 @@ def call(tool, **args):
         _sock.connectToServer(SERVER_NAME)
         if not _sock.waitForConnected(3000):
             _sock = None
-            return {"error": "Sheets isn't running (couldn't connect)."}
+            return {"error": "Exkel isn't running (couldn't connect)."}
     _sock.write((json.dumps({"rpc": tool, "args": args, "target": TARGET}) + "\n").encode("utf-8"))
     _sock.flush()
     buf = b""
@@ -41,13 +41,13 @@ def call(tool, **args):
         return json.loads(buf.split(b"\n", 1)[0].decode("utf-8"))
     # Never resend: the request may already have been carried out (e.g. inserting rows).
     _sock = None
-    return {"error": "Sheets didn't answer in time; check the workbook before retrying."}
+    return {"error": "Exkel didn't answer in time; check the workbook before retrying."}
 
 
 server = MCPServer(
     "sheets",
     instructions=(
-        "Tools for the spreadsheet open in the Sheets app. Ranges use A1 notation ('B2:D10', "
+        "Tools for the spreadsheet open in the Exkel app. Ranges use A1 notation ('B2:D10', "
         "'Sheet2!A1', 'C:C'). Formulas start with '=' and use Excel functions. Read before you write, "
         "check formula_errors in write results, and keep changes to what was asked."),
 )

@@ -18,16 +18,31 @@ def command():
 
 
 def describe():
-    return ("This adds Sheets to the 'Open with' list for " + ", ".join(EXTS) + " files "
+    return ("This adds Exkel to the 'Open with' list for " + ", ".join(EXTS) + " files "
             "(for your Windows user only).")
 
 
-def make_icon():
-    from PySide6.QtGui import QImage
-    from .ui.mainwindow import app_icon
-    img = app_icon().pixmap(64, 64).toImage()
-    img.save(ICON, "ICO")
-    return ICON
+def make_icon(path=ICON):
+    """Write the icon as a multi-size .ico (PNG entries), so Windows picks a sharp one at every size."""
+    import struct
+    from PySide6.QtCore import QBuffer, QIODevice
+    from .ui.mainwindow import ICON_SIZES, paint_app_icon
+    pngs = []
+    for px in ICON_SIZES:
+        buf = QBuffer()
+        buf.open(QIODevice.WriteOnly)
+        paint_app_icon(px).save(buf, "PNG")
+        pngs.append((px, bytes(buf.data())))
+    offset = 6 + 16 * len(pngs)
+    out = [struct.pack("<HHH", 0, 1, len(pngs))]
+    for px, data in pngs:
+        dim = 0 if px >= 256 else px
+        out.append(struct.pack("<BBBBHHII", dim, dim, 0, 0, 1, 32, len(data), offset))
+        offset += len(data)
+    out += [data for _, data in pngs]
+    with open(path, "wb") as fh:
+        fh.write(b"".join(out))
+    return path
 
 
 def register():
@@ -35,12 +50,12 @@ def register():
     make_icon()
     base = r"Software\Classes"
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"{base}\{PROGID}") as k:
-        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Sheets Spreadsheet")
-        winreg.SetValueEx(k, "FriendlyTypeName", 0, winreg.REG_SZ, "Sheets Spreadsheet")
+        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Exkel Spreadsheet")
+        winreg.SetValueEx(k, "FriendlyTypeName", 0, winreg.REG_SZ, "Exkel Spreadsheet")
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"{base}\{PROGID}\DefaultIcon") as k:
         winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ICON)
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"{base}\{PROGID}\shell\open") as k:
-        winreg.SetValueEx(k, "FriendlyAppName", 0, winreg.REG_SZ, "Sheets")
+        winreg.SetValueEx(k, "FriendlyAppName", 0, winreg.REG_SZ, "Exkel")
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"{base}\{PROGID}\shell\open\command") as k:
         winreg.SetValueEx(k, "", 0, winreg.REG_SZ, command())
     for ext in EXTS:
@@ -73,7 +88,7 @@ def unregister():
 if __name__ == "__main__":
     if "--remove" in sys.argv:
         unregister()
-        print("Removed Sheets file associations.")
+        print("Removed Exkel file associations.")
     else:
         register()
-        print("Registered. Right-click a file > Open with > Sheets.")
+        print("Registered. Right-click a file > Open with > Exkel.")

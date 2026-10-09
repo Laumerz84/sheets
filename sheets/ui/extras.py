@@ -112,8 +112,8 @@ class WishlistDialog(QDialog):
         self.setWindowTitle("Feature Wishlist")
         self.resize(900, 560)
         lay = QVBoxLayout(self)
-        lay.addWidget(QLabel("Excel features Sheets doesn't have yet. Pressing one of their KeyTips counts as a "
-                             "vote; Claude asks about the most-wanted ones when you work on Sheets."))
+        lay.addWidget(QLabel("Excel features Exkel doesn't have yet. Pressing one of their KeyTips counts as a "
+                             "vote; Claude asks about the most-wanted ones when you work on Exkel."))
         tried = load_tried()
         rows = [(seq, label, excel, tried.get(seq, {}).get("count", 0))
                 for seq, label, action, excel in KEYTIPS if action is None]

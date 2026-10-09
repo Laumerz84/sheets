@@ -20,9 +20,9 @@ BRIDGE = os.path.join(ROOT, "sheets", "ai", "mcp_server.py")
 MODELS = [("Default model", None), ("Opus", "opus"), ("Sonnet (faster)", "sonnet"), ("Haiku (fastest)", "haiku")]
 
 SYSTEM = (
-    "You are Claude, working inside Sheets, a desktop spreadsheet app. The user is looking at the "
+    "You are Claude, working inside Exkel, a desktop spreadsheet app. The user is looking at the "
     "workbook; act on it only through the sheets tools (you have no file, shell or web access). "
-    "Each message starts with a [Sheets: ...] line giving the active sheet and selection; 'this', "
+    "Each message starts with a [Exkel: ...] line giving the active sheet and selection; 'this', "
     "'here' or 'the selection' mean that range. Read cells before changing them, use formulas "
     "(not hard-coded results) when values depend on other cells, check formula_errors after "
     "writing, and don't delete or overwrite data the user didn't ask about. Keep replies short "
@@ -195,7 +195,7 @@ class ClaudePanel(QDockWidget):
         self.streamed = False
         g = win.grid
         sel = ", ".join(_rng(g.sheet, rc) for rc in g.sel.rects)
-        context = (f"[Sheets: file {os.path.basename(win.wb.path) if win.wb.path else 'unsaved new workbook'}, "
+        context = (f"[Exkel: file {os.path.basename(win.wb.path) if win.wb.path else 'unsaved new workbook'}, "
                    f"active sheet '{g.sheet.name}', selection {sel}]")
         args = cmd + ["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
                       "--mcp-config", cfg, "--strict-mcp-config", "--tools", "",

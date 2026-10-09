@@ -34,7 +34,7 @@ from .dialogs import (ColorMenu, FilterPopup, FindDialog, FormatCellsDialog,
 from .editor import CellEditor
 from .grid import Grid
 
-APP_NAME = "Sheets"
+APP_NAME = "Macrosoft Exkel® 2012 Private Reserve Special Cuvée"
 WINDOWS = []
 SETTINGS_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Sheets")
 SETTINGS_FILE = os.path.join(SETTINGS_DIR, "settings.json")
@@ -65,25 +65,51 @@ def save_settings(data):
         pass
 
 
-def app_icon():
-    pm = QPixmap(64, 64)
-    pm.fill(Qt.transparent)
-    p = QPainter(pm)
+ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
+
+
+def paint_app_icon(px):
+    """Exkel's icon at px x px: a banded green sheet with a dark K tile over its left edge."""
+    from PySide6.QtCore import QRectF
+    from PySide6.QtGui import QFont, QImage, QLinearGradient, QPainterPath
+    img = QImage(px, px, QImage.Format_ARGB32_Premultiplied)
+    img.fill(Qt.transparent)
+    s = px / 64
+    p = QPainter(img)
     p.setRenderHint(QPainter.Antialiasing)
-    p.setBrush(S.ACCENT)
+    p.setRenderHint(QPainter.TextAntialiasing)
     p.setPen(Qt.NoPen)
-    p.drawRoundedRect(4, 4, 56, 56, 10, 10)
+    sheet = QPainterPath()
+    sheet.addRoundedRect(QRectF(18 * s, 6 * s, 42 * s, 52 * s), 4.5 * s, 4.5 * s)
+    p.setClipPath(sheet)
+    for x, y, w, h, color in ((18, 6, 21, 13, "#21A366"), (39, 6, 21, 13, "#33C481"),
+                              (18, 19, 21, 13, "#107C41"), (39, 19, 21, 13, "#21A366"),
+                              (18, 32, 42, 26, "#185C37")):
+        p.setBrush(QColor(color))
+        p.drawRect(QRectF(x * s, y * s, w * s, h * s))
+    p.setClipping(False)
+    small = px <= 24  # bigger tile and K so the letter still reads in the taskbar's small sizes
+    tile = QRectF(1 * s, 11 * s, 42 * s, 42 * s) if small else QRectF(4 * s, 15 * s, 34 * s, 34 * s)
+    grad = QLinearGradient(tile.topLeft(), tile.bottomLeft())
+    grad.setColorAt(0, QColor("#18884F"))
+    grad.setColorAt(1, QColor("#0B6A35"))
+    p.setBrush(grad)
+    p.drawRoundedRect(tile, 3.5 * s, 3.5 * s)
+    f = QFont("Segoe UI")
+    f.setWeight(QFont.Bold)
+    f.setPixelSize(max(8, round((33 if small else 25) * s)))
+    p.setFont(f)
     p.setPen(QColor("#FFFFFF"))
-    for i in range(3):
-        y = 22 + i * 12
-        p.drawLine(14, y, 50, y)
-    for i in range(2):
-        x = 26 + i * 12
-        p.drawLine(x, 14, x, 50)
-    p.setPen(QColor(255, 255, 255, 230))
-    p.drawRect(14, 14, 36, 36)
+    p.drawText(tile.translated(0.6 * s, -0.4 * s), Qt.AlignCenter, "K")
     p.end()
-    return QIcon(pm)
+    return img
+
+
+def app_icon():
+    icon = QIcon()
+    for px in ICON_SIZES:
+        icon.addPixmap(QPixmap.fromImage(paint_app_icon(px)))
+    return icon
 
 
 class MainWindow(QMainWindow):
@@ -293,9 +319,9 @@ class MainWindow(QMainWindow):
         self.a_claude.toggled.connect(lambda on: on and QTimer.singleShot(0, self.claude_panel.input.setFocus))
         self.addAction(self.a_claude)
         self.a_shortcuts = A("&Keyboard Shortcuts", self.show_shortcuts, "F1")
-        self.a_about = A("&About Sheets", self.about)
+        self.a_about = A("&About Exkel", self.about)
         self.a_wishlist = A("Feature &Wishlist...", self.show_wishlist)
-        self.a_register = A("Make Sheets the default for CSV/Excel files...", self.register_file_types)
+        self.a_register = A("Make Exkel the default for CSV/Excel files...", self.register_file_types)
 
     def _build_menus(self):
         mb = self.menuBar()
@@ -2002,7 +2028,7 @@ class MainWindow(QMainWindow):
                 self.grid.set_active(r, c)
                 self.find_dlg.status.setText(f"Found at {sh.name}!{addr(r, c)}")
                 return True
-        self.find_dlg.status.setText("Sheets couldn't find what you were looking for.")
+        self.find_dlg.status.setText("Exkel couldn't find what you were looking for.")
         return False
 
     def find_all(self, p):
@@ -2224,7 +2250,7 @@ class MainWindow(QMainWindow):
             box = QMessageBox(self)
             box.setWindowTitle(APP_NAME)
             box.setIcon(QMessageBox.Warning)
-            box.setText(f"This workbook contains {', '.join(wb.xl_lost_features)} that Sheets can't keep.\n\n"
+            box.setText(f"This workbook contains {', '.join(wb.xl_lost_features)} that Exkel can't keep.\n\n"
                         "Saving over the original file will remove them. You can Save As a new file instead "
                         "to keep the original intact.")
             save_btn = box.addButton("Save Anyway", QMessageBox.AcceptRole)
@@ -2302,7 +2328,7 @@ class MainWindow(QMainWindow):
         from ..register import describe, register
         r = QMessageBox.question(
             self, APP_NAME,
-            describe() + "\n\nWindows will then list Sheets under 'Open with' for these files, and you can pick it "
+            describe() + "\n\nWindows will then list Exkel under 'Open with' for these files, and you can pick it "
             "as the default app (Windows asks you to confirm that part yourself).\n\nContinue?")
         if r != QMessageBox.Yes:
             return
@@ -2313,8 +2339,8 @@ class MainWindow(QMainWindow):
             return
         QMessageBox.information(
             self, APP_NAME,
-            "Done. To make Sheets the default: right-click a .csv or .xlsx file → Open with → Choose another app → "
-            "Sheets → tick 'Always'.")
+            "Done. To make Exkel the default: right-click a .csv or .xlsx file → Open with → Choose another app → "
+            "Exkel → tick 'Always'.")
 
     def show_shortcuts(self):
         text = """
@@ -2356,8 +2382,8 @@ class MainWindow(QMainWindow):
         WishlistDialog(self).exec()
 
     def about(self):
-        QMessageBox.about(self, "About Sheets",
-                          "<b>Sheets</b><br>A lightweight spreadsheet for CSV and Excel files.<br><br>"
+        QMessageBox.about(self, "About Exkel",
+                          "<b>" + APP_NAME + "</b><br>A lightweight spreadsheet for CSV and Excel files.<br><br>"
                           "Opens .xlsx, .xlsm, .xls, .csv and .tsv; saves .xlsx and .csv.")
 
 
