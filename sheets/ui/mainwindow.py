@@ -91,7 +91,8 @@ class MainWindow(QMainWindow):
         super().__init__()
         self.wb = wb or new_workbook()
         self.settings = load_settings()
-        self.undo = QUndoStack(self)
+        from .commands import GuardedUndoStack
+        self.undo = GuardedUndoStack(self, lambda: self.ai_tools.user_locked(), self._claude_busy_message)
         self.undo.setUndoLimit(300)
         self.undo.cleanChanged.connect(lambda _: self.update_title())
         self.undo.indexChanged.connect(lambda _: self.update_title())
@@ -108,6 +109,14 @@ class MainWindow(QMainWindow):
         self.setAttribute(Qt.WA_DeleteOnClose)
 
         self.grid = Grid()
+        import uuid
+        from ..ai.panel import ClaudePanel
+        from ..ai.tools import WorkbookTools
+        self.ai_token = uuid.uuid4().hex   # identifies this window to the Claude bridge
+        self.ai_tools = WorkbookTools(self)
+        self.claude_panel = ClaudePanel(self)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.claude_panel)
+        self.claude_panel.hide()
         self._build_actions()
         self._build_menus()
         self._build_toolbar()
@@ -274,6 +283,13 @@ class MainWindow(QMainWindow):
         self.a_zoom_in = A("Zoom &In", lambda: self.grid.set_zoom(self.grid.zoom + 0.1), "Ctrl+Alt+=", G(S.G_ZOOMIN))
         self.a_zoom_out = A("Zoom &Out", lambda: self.grid.set_zoom(self.grid.zoom - 0.1), "Ctrl+Alt+-", G(S.G_ZOOMOUT))
         self.a_zoom_100 = A("Zoom &100%", lambda: self.grid.set_zoom(1.0), "Ctrl+Alt+0")
+        self.a_claude = self.claude_panel.toggleViewAction()
+        self.a_claude.setText("&Claude")
+        self.a_claude.setShortcut(QKeySequence("Ctrl+Shift+A"))
+        self.a_claude.setIcon(S.text_icon("✳", px=17, color="#D97757", family="Segoe UI Symbol"))
+        self.a_claude.setToolTip("Claude: ask it to work on this workbook (Ctrl+Shift+A)")
+        self.a_claude.toggled.connect(lambda on: on and QTimer.singleShot(0, self.claude_panel.input.setFocus))
+        self.addAction(self.a_claude)
         self.a_shortcuts = A("&Keyboard Shortcuts", self.show_shortcuts, "F1")
         self.a_about = A("&About Sheets", self.about)
         self.a_register = A("Make Sheets the default for CSV/Excel files...", self.register_file_types)
@@ -318,6 +334,7 @@ class MainWindow(QMainWindow):
             fz.addAction(a)
         m.addAction(self.a_gridlines)
         m.addAction(self.a_show_formulas)
+        m.addAction(self.a_claude)
         m.addSeparator()
         for a in (self.a_zoom_in, self.a_zoom_out, self.a_zoom_100):
             m.addAction(a)
@@ -496,6 +513,8 @@ class MainWindow(QMainWindow):
         for a in (self.a_freeze, self.a_freeze_row, self.a_freeze_col, self.a_unfreeze):
             fzm.addAction(a)
         tb.addWidget(self._tool_button(S.lines_icon("freeze"), "Freeze Panes", fzm, None))
+        tb.addSeparator()
+        tb.addAction(self.a_claude)
 
     def _build_central(self):
         central = QWidget()
@@ -630,6 +649,7 @@ class MainWindow(QMainWindow):
         g.edit_text_changed.connect(self._edit_text_changed)
         g.selection_done.connect(self._selection_done)
         g.escape_pressed.connect(self._cancel_painter)
+        g.read_only_hit.connect(self._claude_busy_message)
 
     # ================================================================ state helpers
     @property
@@ -644,8 +664,13 @@ class MainWindow(QMainWindow):
             return
         self.setWindowTitle(f"{name}{mod} - {APP_NAME}")
 
+    def _claude_busy_message(self):
+        self.statusBar().showMessage("Claude is working on this workbook - wait for it to finish, or press Stop "
+                                     "in the Claude panel.", 4000)
+
     def is_pristine(self):
-        return self.wb.path is None and self.undo.count() == 0 and not self.wb.sheets[0].values \
+        return self.wb.path is None and self.undo.count() == 0 and not self.claude_panel.busy() and \
+            not self.wb.sheets[0].values \
             and not self.wb.sheets[0].formulas
 
     def show_sheet(self, sheet):
@@ -2228,6 +2253,12 @@ class MainWindow(QMainWindow):
 
     def closeEvent(self, e):
         self._prep()
+        if self.claude_panel.busy():
+            if QMessageBox.question(self, APP_NAME, "Claude is still working on this workbook. Stop it and close?") \
+                    != QMessageBox.Yes:
+                e.ignore()
+                return
+            self.claude_panel.stop(finish_now=True)
         if not self.undo.isClean():
             name = os.path.basename(self.wb.path) if self.wb.path else "Book1"
             r = QMessageBox.question(self, APP_NAME, f"Save changes to '{name}'?",

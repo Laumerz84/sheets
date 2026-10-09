@@ -667,11 +667,8 @@ def find_matches(sheet, needle, match_case=False, whole=False, in_formulas=True,
     if needle == "":
         return []
     if any(ch in needle for ch in "*?"):
-        from .functions import _wild_compile
-        rx = _wild_compile(needle)
-        flags = 0 if match_case else re.IGNORECASE
-        rx = re.compile(rx.pattern if whole else ".*?" + rx.pattern, flags | re.DOTALL)
-        test = (lambda s: rx.fullmatch(s) is not None) if whole else (lambda s: rx.match(s) is not None)
+        from .functions import wild_match
+        test = lambda s: wild_match(needle, s, whole, match_case)
     else:
         n = needle if match_case else needle.lower()
         if whole:

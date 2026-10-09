@@ -142,6 +142,7 @@ class Grid(QWidget):
     selection_changed = Signal()
     selection_done = Signal()                   # mouse selection finished
     escape_pressed = Signal()
+    read_only_hit = Signal()
     commit_requested = Signal(int, int, str, bool)
     edit_state_changed = Signal(str)            # Ready / Enter / Edit / Point
     edit_text_changed = Signal(str)
@@ -187,6 +188,7 @@ class Grid(QWidget):
         self.point_anchor = None
         self.point_cell = None
         self.bar = None
+        self.read_only = False       # set while Claude works on the workbook
 
         self.vbar = QScrollBar(Qt.Vertical)
         self.hbar = QScrollBar(Qt.Horizontal)
@@ -1221,6 +1223,11 @@ class Grid(QWidget):
     def begin_edit(self, text=None, mode="edit", widget=None, keep_bar_cursor=False):
         if self.sheet is None:
             return
+        if self.read_only:
+            self.read_only_hit.emit()
+            if widget is self.bar:
+                self.setFocus()
+            return
         if self.editing:
             return
         r, c = self.sel.active
@@ -1436,6 +1443,9 @@ class Grid(QWidget):
         if area == "corner":
             self.select_all()
             return
+        if area in ("colborder", "rowborder") and self.read_only:
+            self.read_only_hit.emit()
+            return
         if area == "colborder":
             cols = self._resize_targets_cols(c)
             self._drag_info = {"x": pos.x(), "cols": cols, "orig": {k: self.sheet.col_widths.get(k) for k in cols},
@@ -1471,7 +1481,7 @@ class Grid(QWidget):
             self.selection_changed.emit()
             return
         # cell area
-        if self._on_fill_handle(pos):
+        if self._on_fill_handle(pos) and not self.read_only:
             self.drag_mode = "fill"
             self._drag_info = {"src": self.sel.rects[0]}
             return

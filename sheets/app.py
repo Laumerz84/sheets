@@ -3,12 +3,12 @@ import json
 import os
 import sys
 
-from PySide6.QtCore import QByteArray, Qt, QTimer
+from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication
 
-SERVER_NAME = "SheetsSpreadsheetApp-" + os.environ.get("USERNAME", "user")
+SERVER_NAME = os.environ.get("SHEETS_SERVER_NAME") or ("SheetsSpreadsheetApp-" + os.environ.get("USERNAME", "user"))
 
 
 def _forward(paths, quit_app=False):
@@ -25,30 +25,59 @@ def _forward(paths, quit_app=False):
     return True
 
 
-def _start_server(on_paths):
+def handle_rpc(msg):
+    """A tool call from the Claude bridge: {"rpc": tool, "args": {...}, "target": window token}."""
+    from .ui.mainwindow import WINDOWS
+    win = next((w for w in WINDOWS if w.ai_token == msg.get("target")), None)
+    if win is None:
+        return {"error": "That Sheets window was closed."}
+    return win.ai_tools.call(msg.get("rpc"), msg.get("args") or {})
+
+
+def _start_server(on_paths, name=None, rpc=handle_rpc):
+    """Local socket server.  Two kinds of client:
+    - launcher hand-offs: one JSON object, then disconnect ({"open": [...]} / {"quit": true})
+    - the Claude bridge: newline-terminated {"rpc": ...} requests, each answered with one JSON line."""
     server = QLocalServer()
-    QLocalServer.removeServer(SERVER_NAME)
-    server.listen(SERVER_NAME)
+    name = name or SERVER_NAME
+    QLocalServer.removeServer(name)
+    server.listen(name)
 
     def on_conn():
         conn = server.nextPendingConnection()
         if conn is None:
             return
-        buf = QByteArray()
+        state = {"buf": b"", "rpc": False}
 
         def read():
-            buf.append(conn.readAll())
+            state["buf"] += bytes(conn.readAll())
+            while b"\n" in state["buf"]:
+                line, state["buf"] = state["buf"].split(b"\n", 1)
+                try:
+                    msg = json.loads(line.decode("utf-8"))
+                except ValueError:
+                    continue
+                if "rpc" not in msg:
+                    continue
+                state["rpc"] = True
+                try:
+                    reply = rpc(msg)
+                except Exception as e:  # keep the bridge alive whatever happens
+                    reply = {"error": f"{type(e).__name__}: {e}"}
+                conn.write((json.dumps(reply, default=str) + "\n").encode("utf-8"))
+                conn.flush()
 
         def done():
             read()
-            try:
-                msg = json.loads(bytes(buf).decode("utf-8") or "{}")
-            except ValueError:
-                msg = {}
-            if msg.get("quit"):
-                QTimer.singleShot(0, quit_all)
-            else:
-                on_paths(msg.get("open", []))
+            if not state["rpc"]:
+                try:
+                    msg = json.loads(state["buf"].decode("utf-8") or "{}")
+                except ValueError:
+                    msg = {}
+                if msg.get("quit"):
+                    QTimer.singleShot(0, quit_all)
+                elif "open" in msg:
+                    on_paths(msg.get("open", []))
             conn.deleteLater()
         conn.readyRead.connect(read)
         conn.disconnected.connect(done)
@@ -108,7 +137,13 @@ def main(argv=None):
     from .ui.style import apply_palette
     apply_palette(app)
     app.setWindowIcon(app_icon())
+    global SERVER_NAME
     server = _start_server(open_paths)
+    if not server.isListening():
+        # e.g. --new-instance while another copy owns the name: use our own, so the Claude
+        # panel in this process can still reach its windows
+        SERVER_NAME = f"{SERVER_NAME}-{os.getpid()}"
+        server = _start_server(open_paths)
     open_paths(paths)
     app.setQuitOnLastWindowClosed(True)
     rc = app.exec()

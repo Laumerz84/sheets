@@ -1,5 +1,50 @@
 """Undoable commands."""
-from PySide6.QtGui import QUndoCommand
+from PySide6.QtGui import QUndoCommand, QUndoStack
+
+
+class GuardedUndoStack(QUndoStack):
+    """Undo stack that refuses the user's own changes while `guard()` is true
+    (Claude is working: they would otherwise end up inside Claude's undo step)."""
+
+    def __init__(self, parent, guard, on_blocked):
+        super().__init__(parent)
+        self.guard = guard
+        self.on_blocked = on_blocked
+        self._blocked_depth = 0
+
+    def _blocked(self):
+        return self._blocked_depth > 0 or self.guard()
+
+    def push(self, cmd):
+        if self._blocked():
+            self.on_blocked()
+            return
+        super().push(cmd)
+
+    def beginMacro(self, text):
+        if self._blocked():
+            self._blocked_depth += 1
+            self.on_blocked()
+            return
+        super().beginMacro(text)
+
+    def endMacro(self):
+        if self._blocked_depth:
+            self._blocked_depth -= 1
+            return
+        super().endMacro()
+
+    def undo(self):
+        if self.guard():
+            self.on_blocked()
+            return
+        super().undo()
+
+    def redo(self):
+        if self.guard():
+            self.on_blocked()
+            return
+        super().redo()
 
 
 class _Base(QUndoCommand):

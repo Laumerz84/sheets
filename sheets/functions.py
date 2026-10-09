@@ -125,6 +125,69 @@ def _wild_compile(pattern):
     return re.compile("".join(out), re.IGNORECASE | re.DOTALL)
 
 
+def _wild_segments(pattern):
+    """Split an Excel wildcard pattern on '*' into segments; '?' becomes None (any char).
+    '~*', '~?' and '~~' are literal."""
+    segs, cur, i = [], [], 0
+    while i < len(pattern):
+        ch = pattern[i]
+        if ch == "~" and i + 1 < len(pattern) and pattern[i + 1] in "*?~":
+            cur.append(pattern[i + 1])
+            i += 2
+            continue
+        if ch == "*":
+            segs.append(cur)
+            cur = []
+        else:
+            cur.append(None if ch == "?" else ch)
+        i += 1
+    segs.append(cur)
+    return segs
+
+
+def wild_match(pattern, text, whole=True, match_case=False):
+    """Excel wildcard match without regex backtracking (worst case ~ len(text) * len(pattern))."""
+    if not match_case:
+        pattern, text = pattern.lower(), text.lower()
+    segs = _wild_segments(pattern)
+    n = len(text)
+
+    def at(seg, i):
+        if i < 0 or i + len(seg) > n:
+            return False
+        for j, ch in enumerate(seg):
+            if ch is not None and text[i + j] != ch:
+                return False
+        return True
+
+    def find(seg, start):
+        for i in range(start, n - len(seg) + 1):
+            if at(seg, i):
+                return i
+        return -1
+
+    if len(segs) == 1:
+        return (len(segs[0]) == n and at(segs[0], 0)) if whole else find(segs[0], 0) >= 0
+    first, middle, last = segs[0], segs[1:-1], segs[-1]
+    if whole:
+        if not at(first, 0):
+            return False
+        pos = len(first)
+    else:
+        i = find(first, 0)
+        if i < 0:
+            return False
+        pos = i + len(first)
+    for seg in middle:
+        i = find(seg, pos)
+        if i < 0:
+            return False
+        pos = i + len(seg)
+    if whole:
+        return n - len(last) >= pos and at(last, n - len(last))
+    return find(last, pos) >= 0
+
+
 def _has_wild(s):
     return "*" in s or "?" in s or "~" in s
 
@@ -159,8 +222,7 @@ def make_criteria(crit):
             b = upper == "TRUE"
             pred = lambda v: isinstance(v, bool) and v == b
         elif _has_wild(s):
-            rx = _wild_compile(s)
-            pred = lambda v: isinstance(v, str) and rx.fullmatch(v) is not None
+            pred = lambda v: isinstance(v, str) and wild_match(s, v)
         else:
             low = s.lower()
             pred = lambda v: isinstance(v, str) and v.lower() == low
@@ -1528,10 +1590,9 @@ def _lookup_eq(a, b):
 def _find_exact(vec, x, wildcard=True, reverse=False):
     idx = range(len(vec) - 1, -1, -1) if reverse else range(len(vec))
     if isinstance(x, str) and wildcard and _has_wild(x):
-        rx = _wild_compile(x)
         for i in idx:
             v = vec[i]
-            if isinstance(v, str) and rx.fullmatch(v):
+            if isinstance(v, str) and wild_match(x, v):
                 return i
         return -1
     if isinstance(x, str):
