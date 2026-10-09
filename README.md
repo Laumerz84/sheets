@@ -6,6 +6,8 @@ On this PC it shows as **Exkel** (window title, Start menu, About); the package,
 
 ## Run
 
+- First time: double-click `setup.bat` (makes `.venv`, installs the libraries, checks the Claude panel's
+  setup). Or ask Claude Code in this folder to "set up Exkel"; `CLAUDE.md` tells it how.
 - Start menu: **Exkel**
 - Or: `G:\Sheets\.venv\Scripts\pythonw.exe G:\Sheets\launch.pyw [file ...]`
 - Double-click a file after registering file types (File → *Make Exkel the default for CSV/Excel files...*),

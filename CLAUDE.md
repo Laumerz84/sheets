@@ -5,37 +5,58 @@ Claude panel in `sheets/ai/` (runs the user's Claude Code headless with an MCP b
 Tests: `.venv\Scripts\python.exe -m pytest` (offscreen Qt). Screenshots: `tools\snapshot.py`.
 Live Claude check (uses the user's Claude usage): `tools\e2e_claude.py "request"`.
 
-## Fresh clone: set Exkel up and hook yourself in as its chat
+## SETUP: if the user asks you to set up Exkel (or its Claude chat), do exactly this
 
-Exkel has a **Claude panel** (View > Claude, **Ctrl+Shift+A**): a chat docked in the Exkel window that
-works on the open workbook. It isn't a separate AI. It runs *the user's own Claude Code*
-(`claude -p`, their login and plan, no API key) with one MCP server, `sheets/ai/mcp_server.py`,
-as its only tools. That Claude can read and write cells, formulas and formatting in that window, and
-has no file, shell or web access. Ctrl+Z undoes everything it did for one request. To hook it up:
+**What you are setting up.** Exkel has a chat panel docked in its window. The user opens it with
+**Ctrl+Shift+A**, or View > Claude. That chat is the user's own Claude Code, using their login.
+No API key is needed. In that chat, Claude can only read and change the open workbook.
+You do not write any code for this. It is already built. You only install and check.
 
-1. **Install Exkel** (Windows, Python 3.11+): from the repo folder run `python -m venv .venv`, then
-   `.venv\Scripts\python.exe -m pip install -r requirements.txt`. This includes `mcp`, which the
-   bridge needs. Start it with `.venv\Scripts\pythonw.exe launch.pyw [file]`. Launch it detached
-   from your session (e.g. `Invoke-CimMethod Win32_Process -MethodName Create -Arguments
-   @{ CommandLine = '"<repo>\.venv\Scripts\pythonw.exe" "<repo>\launch.pyw"'; CurrentDirectory = '<repo>' }`),
-   because processes started from a Claude Code session can die with it. Optional, ask first:
-   a Start menu shortcut with the icon,
-   `.venv\Scripts\python.exe -c "from sheets import winshell; winshell.write_shortcut(winshell.START_MENU_LNK)"`,
-   and "Open with" entries via `.venv\Scripts\python.exe -m sheets.register` (`--remove` undoes; HKCU only).
-2. **Make sure Claude Code is installed for the user.** Exkel looks for `claude` on PATH, then
-   `%USERPROFILE%\.local\bin\claude.exe` (where the native installer puts it:
-   `irm https://claude.ai/install.ps1 | iex`). If it lives somewhere else, set the user env var
-   `SHEETS_CLAUDE_CMD` to a JSON list, e.g. `["C:\\path\\to\\claude.exe"]`.
-3. **Signed in:** the user must have run `claude` once in a terminal and logged in. They do the login
-   themselves; never type their credentials.
-4. **Check the hookup.** Run `.venv\Scripts\python.exe tools\e2e_claude.py "put =1+1 in A1"`. It
-   drives a real panel request offscreen and uses a little of the user's Claude usage, so ask before
-   running it. Or have the user open Exkel, press Ctrl+Shift+A and ask something small.
-   Panel messages and what they mean:
-   - "Claude Code isn't installed": step 2.
-   - "Couldn't connect Claude to this workbook (failed)": the bridge didn't start. Usually `mcp` is
-     missing from `.venv`; re-run the pip install.
-   - "Claude Code failed ... sign in": step 3.
+Run every command from the repo folder (the folder this file is in). The commands are for
+PowerShell or cmd on Windows.
+
+**Step 1. Install.** Run:
+
+    cmd /c "<repo folder>\setup.bat"
+
+It creates `.venv`, installs the libraries, then prints a check list. It is safe to run again.
+
+**Step 2. Read the check list.** Each line starts with PASS, FAIL or NOTE.
+- Every FAIL line has a `FIX:` line under it. Do that fix, then run the check again with
+  `.venv\Scripts\python.exe tools\doctor.py`.
+- Repeat until the last line says `READY`.
+- Some fixes are only the user's to do. If the fix is installing Python or Claude Code, tell the
+  user the exact command from the FIX line and ask before running it.
+
+**Step 3. Sign-in.** The check list can't see whether the user is signed in to Claude Code.
+Ask them: "Have you signed in to Claude Code on this PC? If not, open a terminal, type
+`claude`, and log in." The user does the login themselves. Never type a password or a code for them.
+
+**Step 4. Start Exkel.** Start it so it keeps running after your session ends:
+
+    Invoke-CimMethod Win32_Process -MethodName Create -Arguments @{ CommandLine = '"<repo folder>\.venv\Scripts\pythonw.exe" "<repo folder>\launch.pyw"'; CurrentDirectory = '<repo folder>' }
+
+Put the real folder in place of `<repo folder>`. `ReturnValue` 0 means it started.
+
+**Step 5. Tell the user how to use it.** Say: "In Exkel, press **Ctrl+Shift+A** to open the Claude
+chat. Ask it something small, like 'put 1 to 10 in column A'. **Ctrl+Z** undoes what it did."
+
+**Optional. Ask the user first, then do only what they say yes to.**
+- Start menu shortcut:
+  `.venv\Scripts\python.exe -c "from sheets import winshell; winshell.write_shortcut(winshell.START_MENU_LNK)"`
+- Show Exkel in "Open with" for csv/xlsx files: `.venv\Scripts\python.exe -m sheets.register`.
+  `--remove` undoes it.
+- A full live test of the chat: `.venv\Scripts\python.exe tools\e2e_claude.py "put =1+1 in A1"`.
+  It uses a little of the user's Claude usage. It should print a transcript and the changed cells.
+
+**If the chat shows an error later:**
+
+| Message in the chat panel | Fix |
+| --- | --- |
+| "Claude Code isn't installed" | Run `tools\doctor.py` and follow the Claude Code FIX line. |
+| "Couldn't connect Claude to this workbook" | Run `setup.bat` again (the `mcp` library is missing). |
+| "Claude Code failed ... sign in" | Step 3. |
+
 
 How it's wired, for changes: `sheets/ai/panel.py` writes a per-window MCP config in `.aiwork\` and starts
 `claude -p --output-format stream-json --mcp-config <cfg> --strict-mcp-config --tools "" --allowedTools mcp__sheets
