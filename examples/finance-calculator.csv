@@ -1,0 +1,55 @@
+PERSONAL FINANCE CALCULATOR,,,"=TEXT(TODAY(),""dddd, mmmm d, yyyy"")",,,,,
+Change any INPUT (column B) and everything recalculates.,,,,,,,,
+,,,,,,,,
+MORTGAGE,,,FIRST YEAR OF PAYMENTS,,,,,
+INPUT Home price,"$450,000",,Month,Payment,Interest,Principal,Balance,
+INPUT Down payment,20%,,1,=$B$12,"=ROUND($B$11*$B$7/12,2)",=E6-F6,"=ROUND($B$11-G6,2)",
+INPUT Interest rate (APR),6.5%,,=D6+1,=$B$12,"=ROUND(H6*$B$7/12,2)",=E7-F7,"=ROUND(H6-G7,2)",
+INPUT Loan term (years),30,,=D7+1,=$B$12,"=ROUND(H7*$B$7/12,2)",=E8-F8,"=ROUND(H7-G8,2)",
+INPUT Property tax / year,"$5,400",,=D8+1,=$B$12,"=ROUND(H8*$B$7/12,2)",=E9-F9,"=ROUND(H8-G9,2)",
+INPUT Insurance / year,"$1,800",,=D9+1,=$B$12,"=ROUND(H9*$B$7/12,2)",=E10-F10,"=ROUND(H9-G10,2)",
+Loan amount,=B5*(1-B6),,=D10+1,=$B$12,"=ROUND(H10*$B$7/12,2)",=E11-F11,"=ROUND(H10-G11,2)",
+Monthly principal + interest,"=ROUND(-PMT(B7/12,B8*12,B11),2)",,=D11+1,=$B$12,"=ROUND(H11*$B$7/12,2)",=E12-F12,"=ROUND(H11-G12,2)",
+Monthly total incl. tax + ins.,"=ROUND(B12+(B9+B10)/12,2)",,=D12+1,=$B$12,"=ROUND(H12*$B$7/12,2)",=E13-F13,"=ROUND(H12-G13,2)",
+Total paid over the loan,"=ROUND(B12*B8*12,2)",,=D13+1,=$B$12,"=ROUND(H13*$B$7/12,2)",=E14-F14,"=ROUND(H13-G14,2)",
+Total interest,"=ROUND(B14-B11,2)",,=D14+1,=$B$12,"=ROUND(H14*$B$7/12,2)",=E15-F15,"=ROUND(H14-G15,2)",
+Interest as % of loan,"=TEXT(B15/B11,""0.0%"")",,=D15+1,=$B$12,"=ROUND(H15*$B$7/12,2)",=E16-F16,"=ROUND(H15-G16,2)",
+Paid off in,"=TEXT(EDATE(TODAY(),B8*12),""mmmm yyyy"")",,=D16+1,=$B$12,"=ROUND(H16*$B$7/12,2)",=E17-F17,"=ROUND(H16-G17,2)",
+,,,Year 1 totals,=SUM(E6:E17),=SUM(F6:F17),=SUM(G6:G17),"=""Paid off: ""&TEXT(1-H17/B11,""0.0%"")",
+,,,,,,,,
+SAVINGS & INVESTING,,,GROWTH BY YEAR,,,,,
+INPUT Starting balance,"$10,000",,Year,Start,Added,Growth,End,
+INPUT Monthly contribution,$750,,1,=$B$21,=$B$22*12,"=ROUND(H22-E22-F22,2)","=ROUND(FV($B$23/12,12,-$B$22,-E22),2)",
+INPUT Expected annual return,7%,,=D22+1,=H22,=$B$22*12,"=ROUND(H23-E23-F23,2)","=ROUND(FV($B$23/12,12,-$B$22,-E23),2)",
+INPUT Years,25,,=D23+1,=H23,=$B$22*12,"=ROUND(H24-E24-F24,2)","=ROUND(FV($B$23/12,12,-$B$22,-E24),2)",
+INPUT Inflation,3%,,=D24+1,=H24,=$B$22*12,"=ROUND(H25-E25-F25,2)","=ROUND(FV($B$23/12,12,-$B$22,-E25),2)",
+Future value,"=ROUND(FV(B23/12,B24*12,-B22,-B21),2)",,=D25+1,=H25,=$B$22*12,"=ROUND(H26-E26-F26,2)","=ROUND(FV($B$23/12,12,-$B$22,-E26),2)",
+Total you put in,=B21+B22*12*B24,,=D26+1,=H26,=$B$22*12,"=ROUND(H27-E27-F27,2)","=ROUND(FV($B$23/12,12,-$B$22,-E27),2)",
+Growth from returns,"=ROUND(B26-B27,2)",,=D27+1,=H27,=$B$22*12,"=ROUND(H28-E28-F28,2)","=ROUND(FV($B$23/12,12,-$B$22,-E28),2)",
+Future value in today's money,"=ROUND(B26/(1+B25)^B24,2)",,=D28+1,=H28,=$B$22*12,"=ROUND(H29-E29-F29,2)","=ROUND(FV($B$23/12,12,-$B$22,-E29),2)",
+Monthly income (4% rule),"=ROUND(B26*0.04/12,2)",,=D29+1,=H29,=$B$22*12,"=ROUND(H30-E30-F30,2)","=ROUND(FV($B$23/12,12,-$B$22,-E30),2)",
+Years to double (rule of 72),"=ROUND(72/(B23*100),1)",,=D30+1,=H30,=$B$22*12,"=ROUND(H31-E31-F31,2)","=ROUND(FV($B$23/12,12,-$B$22,-E31),2)",
+,,,,,,,,
+,,,,,,,,
+MONTHLY BUDGET,,,,,,,QUICK MATH,
+INPUT Monthly take-home pay,"$7,800",,,,,,INPUT Any number,144
+Category,Budget,Spent,Left,% of pay,Status,,Square root,=SQRT(I35)
+Housing (from mortgage),=B13,=B13,=B37-C37,"=TEXT(C37/$B$35,""0.0%"")","=IF(C37>B37,""OVER by ""&TEXT(C37-B37,""$#,##0""),""ok"")",,Squared,=I35^2
+Groceries,650,712,=B38-C38,"=TEXT(C38/$B$35,""0.0%"")","=IF(C38>B38,""OVER by ""&TEXT(C38-B38,""$#,##0""),""ok"")",,Even?,"=IF(ISEVEN(I35),""yes"",""no"")"
+Transport,400,365,=B39-C39,"=TEXT(C39/$B$35,""0.0%"")","=IF(C39>B39,""OVER by ""&TEXT(C39-B39,""$#,##0""),""ok"")",,"As a percentage of 1,000","=TEXT(I35/1000,""0.0%"")"
+Utilities,280,301,=B40-C40,"=TEXT(C40/$B$35,""0.0%"")","=IF(C40>B40,""OVER by ""&TEXT(C40-B40,""$#,##0""),""ok"")",,Factorial of 10,=FACT(10)
+Dining out,300,420,=B41-C41,"=TEXT(C41/$B$35,""0.0%"")","=IF(C41>B41,""OVER by ""&TEXT(C41-B41,""$#,##0""),""ok"")",,Pi to 6 places,"=ROUND(PI(),6)"
+Savings (from above),=B22,=B22,=B42-C42,"=TEXT(C42/$B$35,""0.0%"")","=IF(C42>B42,""OVER by ""&TEXT(C42-B42,""$#,##0""),""ok"")",,Random 1-100 (F9 to reroll),"=RANDBETWEEN(1,100)"
+Health,200,150,=B43-C43,"=TEXT(C43/$B$35,""0.0%"")","=IF(C43>B43,""OVER by ""&TEXT(C43-B43,""$#,##0""),""ok"")",,Days until New Year,"=DATE(YEAR(TODAY())+1,1,1)-TODAY()"
+Fun money,250,180,=B44-C44,"=TEXT(C44/$B$35,""0.0%"")","=IF(C44>B44,""OVER by ""&TEXT(C44-B44,""$#,##0""),""ok"")",,Week of the year,=WEEKNUM(TODAY())
+Total,=SUM(B37:B44),=SUM(C37:C44),=B45-C45,"=TEXT(C45/B35,""0.0%"")","=IF(C45>B35,""Spending more than you earn!"",""Left over: ""&TEXT(B35-C45,""$#,##0""))",,18% tip on $86.40,"=ROUND(86.4*0.18,2)"
+Biggest expense,"=INDEX(A37:A44,MATCH(MAX(C37:C44),C37:C44,0))",,,,,,...split 4 ways,"=ROUND(86.4*1.18/4,2)"
+Categories over budget,"=COUNTIF(D37:D44,""<0"")",,,,,,22 C in Fahrenheit,=22*9/5+32
+Average spend per category,"=ROUND(AVERAGE(C37:C44),2)",,,,,,Marathon in km,"=ROUND(26.2*1.609344,2)"
+Savings rate,"=TEXT(C42/B35,""0.0%"")",,,,,,,
+Spend excluding housing + savings,"=SUMIFS(C37:C44,A37:A44,""<>Housing*"",A37:A44,""<>Savings*"")",,,,,,,
+,,,,,,,,
+THE BIG PICTURE,,,,,,,,
+Housing cost as % of pay,"=TEXT(B13/B35,""0.0%"")","=IF(B13/B35>0.28,""above the 28% guideline"",""within the 28% guideline"")",,,,,,
+Savings in 25 years (today's money),=B29,,,,,,,
+Years of spending it would cover,"=ROUND(B29/(C45*12),1)",,,,,,,
