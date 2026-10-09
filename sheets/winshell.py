@@ -10,7 +10,7 @@ PYW = os.path.join(ROOT, ".venv", "Scripts", "pythonw.exe")
 LAUNCHER = os.path.join(ROOT, "launch.pyw")
 ICON = os.path.join(ROOT, "sheets.ico")
 START_MENU_LNK = os.path.join(os.environ.get("APPDATA", ""), "Microsoft", "Windows", "Start Menu",
-                              "Programs", "Macrosoft Exkel® 2012 Private Reserve Special Cuvée.lnk")
+                              "Programs", "Macrosoft Exkel® 2003 Private Reserve Special Cuvée.lnk")
 
 
 def relaunch_command():
@@ -26,7 +26,7 @@ def set_window_identity(hwnd):
         store = propsys.SHGetPropertyStoreForWindow(int(hwnd), propsys.IID_IPropertyStore)
         for key, value in ((pscon.PKEY_AppUserModel_ID, APP_ID),
                            (pscon.PKEY_AppUserModel_RelaunchCommand, relaunch_command()),
-                           (pscon.PKEY_AppUserModel_RelaunchDisplayNameResource, "Macrosoft Exkel® 2012 Private Reserve Special Cuvée"),
+                           (pscon.PKEY_AppUserModel_RelaunchDisplayNameResource, "Macrosoft Exkel® 2003 Private Reserve Special Cuvée"),
                            (pscon.PKEY_AppUserModel_RelaunchIconResource, ICON + ",0")):
             store.SetValue(key, propsys.PROPVARIANTType(value))
         store.Commit()

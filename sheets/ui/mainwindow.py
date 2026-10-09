@@ -34,7 +34,7 @@ from .dialogs import (ColorMenu, FilterPopup, FindDialog, FormatCellsDialog,
 from .editor import CellEditor
 from .grid import Grid
 
-APP_NAME = "Macrosoft Exkel® 2012 Private Reserve Special Cuvée"
+APP_NAME = "Macrosoft Exkel® 2003 Private Reserve Special Cuvée"
 WINDOWS = []
 SETTINGS_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Sheets")
 SETTINGS_FILE = os.path.join(SETTINGS_DIR, "settings.json")

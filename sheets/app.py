@@ -127,7 +127,7 @@ def main(argv=None):
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv[:1])
     app.setApplicationName("Sheets")
-    app.setApplicationDisplayName("Macrosoft Exkel® 2012 Private Reserve Special Cuvée")
+    app.setApplicationDisplayName("Macrosoft Exkel® 2003 Private Reserve Special Cuvée")
     app.setOrganizationName("Sheets")
     if "--quit" in argv:  # ask a running copy to close (used by App Launcher's Stop)
         _forward([], quit_app=True)
