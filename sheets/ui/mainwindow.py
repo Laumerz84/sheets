@@ -2070,22 +2070,33 @@ class MainWindow(QMainWindow):
         for i, p in enumerate(recent[:12]):
             self.recent_menu.addAction(f"&{i + 1}  {p}", lambda path=p: self.open_path(path))
 
-    def _remember(self, path):
+    def _remember(self, path, saved=False):
         s = load_settings()
         rec = [p for p in s.get("recent", []) if os.path.normcase(p) != os.path.normcase(path)]
         rec.insert(0, path)
         s["recent"] = rec[:15]
         s["last_dir"] = os.path.dirname(path)
+        if saved:
+            s["save_dir"] = os.path.dirname(path)
         save_settings(s)
         self.settings = s
+
+    def default_dir(self):
+        """Where Open / Save As start: the folder you last saved to, else the last one
+        you opened from, else Documents."""
+        s = load_settings()  # fresh: another window may have saved since
+        for d in (s.get("save_dir"), s.get("last_dir")):
+            if d and os.path.isdir(d):
+                return d
+        from PySide6.QtCore import QStandardPaths
+        return QStandardPaths.writableLocation(QStandardPaths.DocumentsLocation) or os.path.expanduser("~")
 
     def file_new(self):
         w = MainWindow(new_workbook())
         w.show()
 
     def file_open(self):
-        start = self.settings.get("last_dir") or os.path.expanduser("~")
-        paths, _ = QFileDialog.getOpenFileNames(self, "Open", start, OPEN_FILTER)
+        paths, _ = QFileDialog.getOpenFileNames(self, "Open", self.default_dir(), OPEN_FILTER)
         for p in paths:
             self.open_path(p)
 
@@ -2130,7 +2141,7 @@ class MainWindow(QMainWindow):
     def file_save_as(self):
         self._prep()
         p = self.wb.path
-        start_dir = os.path.dirname(p) if p else (self.settings.get("last_dir") or os.path.expanduser("~"))
+        start_dir = os.path.dirname(p) if p else self.default_dir()
         base = os.path.splitext(os.path.basename(p))[0] if p else "Book1"
         ext = os.path.splitext(p)[1].lower() if p else ".xlsx"
         if ext not in WRITABLE:
@@ -2197,7 +2208,7 @@ class MainWindow(QMainWindow):
             return False
         QApplication.restoreOverrideCursor()
         self.undo.setClean()
-        self._remember(path)
+        self._remember(path, saved=True)
         self.update_title()
         self.statusBar().showMessage(f"Saved {path}", 4000)
         return True

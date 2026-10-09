@@ -468,3 +468,15 @@ def test_undo_while_editing_cancels_edit(win, app):
     win.do_undo()
     assert not win.grid.editing
     assert val(win, "A4") == "r4"
+
+
+def test_open_dialog_starts_in_last_save_folder(win, app, tmp_path):
+    saved = tmp_path / "saved_here"
+    opened = tmp_path / "opened_here"
+    saved.mkdir()
+    opened.mkdir()
+    put(win, "A1", "x")
+    assert win.do_save(str(saved / "a.csv"))
+    (opened / "b.csv").write_text("1,2\n")
+    win.open_path(str(opened / "b.csv"))
+    assert win.default_dir() == str(saved)
