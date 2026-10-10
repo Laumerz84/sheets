@@ -9,6 +9,7 @@ import datetime as dt
 import json
 import os
 
+from ..osinfo import UI_FONT, UI_PT, settings_dir
 from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer
 from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QComboBox, QFrame,
                                QInputDialog, QLabel, QLineEdit, QPlainTextEdit,
@@ -300,7 +301,7 @@ BY_SEQ = {seq: (label, action, excel) for seq, label, action, excel in KEYTIPS}
 
 
 def tried_log_path():
-    return os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Sheets", "wishlist-tried.json")
+    return os.path.join(settings_dir(), "wishlist-tried.json")
 
 
 def load_tried():
@@ -350,7 +351,7 @@ class KeyTipHints(QFrame):
     def __init__(self, win):
         super().__init__(win, Qt.ToolTip | Qt.FramelessWindowHint)
         self.setStyleSheet("KeyTipHints { background: #2B2B2B; border: 1px solid #1A1A1A; border-radius: 4px; }"
-                           "QLabel { color: #F0F0F0; font: 9pt 'Segoe UI'; }")
+                           f"QLabel {{ color: #F0F0F0; font: {UI_PT}pt '{UI_FONT}'; }}")
         lay = QVBoxLayout(self)
         lay.setContentsMargins(10, 6, 10, 8)
         self.label = QLabel()

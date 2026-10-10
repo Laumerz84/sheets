@@ -3,12 +3,12 @@ import json
 import os
 import sys
 
-from PySide6.QtCore import Qt, QTimer
+from PySide6.QtCore import QEvent, QObject, Qt, QTimer
 from PySide6.QtGui import QGuiApplication
 from PySide6.QtNetwork import QLocalServer, QLocalSocket
 from PySide6.QtWidgets import QApplication
 
-SERVER_NAME = os.environ.get("SHEETS_SERVER_NAME") or ("SheetsSpreadsheetApp-" + os.environ.get("USERNAME", "user"))
+SERVER_NAME = os.environ.get("SHEETS_SERVER_NAME") or ("SheetsSpreadsheetApp-" + (os.environ.get("USERNAME") or os.environ.get("USER") or "user"))
 
 
 def _forward(paths, quit_app=False):
@@ -85,6 +85,14 @@ def _start_server(on_paths, name=None, rpc=handle_rpc):
     return server
 
 
+class _FileOpenEvents(QObject):
+    def eventFilter(self, obj, ev):
+        if ev.type() == QEvent.FileOpen and ev.file():
+            QTimer.singleShot(0, lambda p=ev.file(): open_paths([p]))
+            return True
+        return False
+
+
 def quit_all():
     """Close every window the normal way, so unsaved work still gets the Save? prompt."""
     from .ui.mainwindow import WINDOWS
@@ -145,6 +153,9 @@ def main(argv=None):
         # panel in this process can still reach its windows
         SERVER_NAME = f"{SERVER_NAME}-{os.getpid()}"
         server = _start_server(open_paths)
+    # macOS: Finder (double-click, Open With, dropping on the Dock icon) sends files as events, not argv
+    file_events = _FileOpenEvents(app)
+    app.installEventFilter(file_events)
     open_paths(paths)
     app.setQuitOnLastWindowClosed(True)
     rc = app.exec()

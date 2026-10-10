@@ -1,6 +1,7 @@
-"""Check that Ekxel and its Claude panel are set up. Read-only: installs and changes nothing.
+r"""Check that Ekxel and its Claude panel are set up. Read-only: installs and changes nothing.
 
-usage: .venv\\Scripts\\python.exe tools\\doctor.py
+usage: Windows  .venv\Scripts\python.exe tools\doctor.py
+       macOS    .venv/bin/python tools/doctor.py
 Prints one PASS / FAIL / NOTE line per check, with the fix for each FAIL. Exit code 0 = ready."""
 import importlib
 import os
@@ -9,7 +10,14 @@ import sys
 
 ROOT = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 sys.path.insert(0, ROOT)
-VENV_PY = os.path.join(ROOT, ".venv", "Scripts", "python.exe")
+IS_WIN = sys.platform == "win32"
+IS_MAC = sys.platform == "darwin"
+VENV_PY = os.path.join(ROOT, ".venv", "Scripts", "python.exe") if IS_WIN else os.path.join(ROOT, ".venv", "bin", "python")
+SETUP = "setup.bat" if IS_WIN else "./setup.sh"
+if IS_WIN:
+    INSTALL_CLAUDE = "in PowerShell run  irm https://claude.ai/install.ps1 | iex"
+else:
+    INSTALL_CLAUDE = "in Terminal run  curl -fsSL https://claude.ai/install.sh | bash"
 results = []
 
 
@@ -25,22 +33,32 @@ def note(label):
 
 
 def main():
-    print(f"Ekxel setup check ({ROOT})\n")
-    check(sys.version_info >= (3, 11), f"Python {sys.version.split()[0]} (need 3.11+)",
-          "Install Python 3.11 or newer (winget install Python.Python.3.12), then run setup.bat again.")
+    print(f"Ekxel setup check ({ROOT}, {sys.platform})\n")
+    py_fix = ("Install Python 3.11 or newer (winget install Python.Python.3.12)" if IS_WIN else
+              "Install Python 3.11 or newer (brew install python@3.12)") + f", then run {SETUP} again."
+    check(sys.version_info >= (3, 11), f"Python {sys.version.split()[0]} (need 3.11+)", py_fix)
     in_venv = os.path.normcase(os.path.abspath(sys.executable)).startswith(
         os.path.normcase(os.path.join(ROOT, ".venv")))
-    check(in_venv, "running from the repo's .venv",
-          f"Run setup.bat, then run this with {VENV_PY}")
+    check(in_venv, "running from the repo's .venv", f"Run {SETUP}, then run this with {VENV_PY}")
 
-    for mod, pkg in (("PySide6", "PySide6"), ("openpyxl", "openpyxl"), ("xlrd", "xlrd"),
-                     ("mcp", "mcp"), ("win32com", "pywin32")):
+    packages = [("PySide6", "PySide6"), ("openpyxl", "openpyxl"), ("xlrd", "xlrd"), ("mcp", "mcp")]
+    if IS_WIN:
+        packages.append(("win32com", "pywin32"))  # taskbar name/icon; Windows only
+    for mod, pkg in packages:
         try:
             importlib.import_module(mod)
             check(True, f"package {pkg}")
         except Exception as e:  # noqa: BLE001
             check(False, f"package {pkg} ({type(e).__name__}: {e})",
                   f'"{VENV_PY}" -m pip install -r "{os.path.join(ROOT, "requirements.txt")}"')
+
+    try:
+        import platform
+
+        from PySide6.QtCore import qVersion
+        note(f"Qt {qVersion()} on {platform.machine()}")
+    except Exception:  # noqa: BLE001
+        pass
 
     try:
         importlib.import_module("sheets.ai.mcp_server")
@@ -52,10 +70,9 @@ def main():
     from sheets.ai.panel import find_claude
     cmd = find_claude()
     if not cmd:
-        check(False, "Claude Code (claude.exe) found",
-              "Install Claude Code: in PowerShell run  irm https://claude.ai/install.ps1 | iex  "
-              "(it goes to %USERPROFILE%\\.local\\bin\\claude.exe, which Ekxel finds even off PATH). "
-              "Or set the user env var SHEETS_CLAUDE_CMD to a JSON list like [\"C:\\\\path\\\\claude.exe\"].")
+        check(False, "Claude Code (claude) found",
+              f"Install Claude Code: {INSTALL_CLAUDE}  (it goes to ~/.local/bin, which Ekxel finds even "
+              "off PATH). Or set the env var SHEETS_CLAUDE_CMD to a JSON list like [\"/path/to/claude\"].")
     else:
         try:
             out = subprocess.run(cmd + ["--version"], capture_output=True, text=True, timeout=60,
@@ -64,20 +81,27 @@ def main():
             check(out.returncode == 0, f"Claude Code runs: {cmd[0]} ({ver})",
                   "Reinstall Claude Code (see above) and try `claude --version` in a terminal.")
         except Exception as e:  # noqa: BLE001
-            check(False, f"Claude Code at {cmd[0]} doesn't run ({e})",
-                  "Reinstall Claude Code: irm https://claude.ai/install.ps1 | iex")
+            check(False, f"Claude Code at {cmd[0]} doesn't run ({e})", f"Reinstall Claude Code: {INSTALL_CLAUDE}")
+    e2e = os.path.join("tools", "e2e_claude.py")
     note("Sign-in can't be checked without using Claude: the user must have run `claude` once in a "
          "terminal and logged in. To test the whole chain (uses a little Claude usage, ask first): "
-         f'"{VENV_PY}" tools\\e2e_claude.py "put =1+1 in A1"')
+         f'"{VENV_PY}" {e2e} "put =1+1 in A1"')
 
-    lnk = os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs")
-    has_lnk = os.path.isdir(lnk) and any("ekxel" in f.lower() for f in os.listdir(lnk))
-    note("Start menu shortcut: " + ("present" if has_lnk else
-         f'none (optional, ask the user): "{VENV_PY}" -c "from sheets import winshell; '
-         'winshell.write_shortcut(winshell.START_MENU_LNK)"'))
+    if IS_WIN:
+        lnk = os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs")
+        has_lnk = os.path.isdir(lnk) and any("ekxel" in f.lower() for f in os.listdir(lnk))
+        note("Start menu shortcut: " + ("present" if has_lnk else
+             f'none (optional, ask the user): "{VENV_PY}" -c "from sheets import winshell; '
+             'winshell.write_shortcut(winshell.START_MENU_LNK)"'))
+        start = "start Ekxel"
+    else:
+        cmd_file = os.path.join(ROOT, "Ekxel.command")
+        check(os.access(cmd_file, os.X_OK), "Ekxel.command is executable", f'chmod +x "{cmd_file}"')
+        start = "double-click Ekxel.command (or run .venv/bin/python launch.pyw)"
 
+    keys = "Cmd+Shift+A" if IS_MAC else "Ctrl+Shift+A"
     ready = all(results)
-    print("\nREADY: start Ekxel, then press Ctrl+Shift+A for the Claude panel." if ready
+    print(f"\nREADY: {start}, then press {keys} for the Claude panel." if ready
           else "\nNOT READY: do each FIX above, then run this again.")
     return 0 if ready else 1
 

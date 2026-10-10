@@ -1,6 +1,7 @@
 # Sheets
 
-A lightweight Excel-style spreadsheet for Windows: view and edit CSV and Excel files without Excel.
+A lightweight Excel-style spreadsheet for Windows and macOS (Apple Silicon or Intel): view and edit
+CSV and Excel files without Excel.
 On this PC it shows as **Ekxel** (window title, Start menu, About); the package, folder, settings
 (`%APPDATA%\Sheets`) and app id stay "Sheets".
 
@@ -12,6 +13,19 @@ On this PC it shows as **Ekxel** (window title, Start menu, About); the package,
 - Or: `G:\Sheets\.venv\Scripts\pythonw.exe G:\Sheets\launch.pyw [file ...]`
 - Double-click a file after registering file types (File → *Make Ekxel the default for CSV/Excel files...*),
   or run `.venv\Scripts\python.exe -m sheets.register` (`--remove` to undo).
+
+### macOS (M1-M5 or Intel)
+
+1. Python 3.11 or newer (the one built into macOS is too old): `brew install python@3.12`
+   (or the installer from python.org).
+2. Claude Code, for the Claude panel (optional): `curl -fsSL https://claude.ai/install.sh | bash`, then run
+   `claude` once and sign in.
+3. `git clone https://github.com/Laumerz84/sheets.git && cd sheets && ./setup.sh`
+4. Double-click `Ekxel.command` in Finder (first time: right-click > Open if macOS asks).
+
+On a Mac, Ctrl shortcuts are Cmd (Cmd+S, Cmd+Shift+A for Claude, ...). Settings live in
+`~/Library/Application Support/Sheets`; Open/Save start in `~/Documents/Spreadsheets`.
+Not on a Mac: Start menu/taskbar shortcut and "Make Ekxel the default" (Windows only).
 
 Only one copy runs at a time: opening another file hands it to the running app (new window per workbook).
 

@@ -7,6 +7,7 @@ from PySide6.QtGui import (QColor, QFont, QFontMetrics, QSyntaxHighlighter,
 from PySide6.QtWidgets import (QFrame, QLabel, QListWidget, QListWidgetItem,
                                QPlainTextEdit)
 
+from ..osinfo import UI_FONT, UI_PT
 from ..formula import ref_spans, toggle_absolute
 from ..functions import ALL_NAMES, SIGNATURES
 from .style import REF_COLORS
@@ -47,7 +48,7 @@ class FunctionPopup(QListWidget):
         super().__init__(parent)
         self.setWindowFlags(Qt.ToolTip | Qt.FramelessWindowHint)
         self.setFocusPolicy(Qt.NoFocus)
-        self.setStyleSheet("QListWidget { border: 1px solid #A0A0A0; background: white; font: 9pt 'Segoe UI'; }"
+        self.setStyleSheet(f"QListWidget {{ border: 1px solid #A0A0A0; background: white; font: {UI_PT}pt '{UI_FONT}'; }}"
                            "QListWidget::item { padding: 2px 6px; }"
                            "QListWidget::item:selected { background: #CFE5D7; color: black; }")
         self.itemClicked.connect(lambda it: self.chosen.emit(it.text()))
@@ -76,7 +77,7 @@ class HintLabel(QLabel):
         super().__init__(None)
         self.setWindowFlags(Qt.ToolTip | Qt.FramelessWindowHint)
         self.setStyleSheet("QLabel { background: #FFFFE8; border: 1px solid #B0B0B0; padding: 2px 6px;"
-                           " font: 9pt 'Segoe UI'; color: #333; }")
+                           f" font: {UI_PT}pt '{UI_FONT}'; color: #333; }}")
 
 
 _TOKEN_BEFORE = re.compile(r"([A-Za-z_][A-Za-z0-9_.]*)$")

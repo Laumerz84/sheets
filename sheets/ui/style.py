@@ -1,4 +1,5 @@
 """Colors, fonts, palette and toolbar icons."""
+from ..osinfo import UI_FONT, UI_PT
 from PySide6.QtCore import QPointF, QRectF, Qt
 from PySide6.QtGui import (QColor, QFont, QFontDatabase, QIcon, QIconEngine, QPainter,
                            QPainterPath, QPalette, QPen, QPixmap)
@@ -22,7 +23,7 @@ DEFAULT_FONT_FAMILY = "Calibri"   # the workbook's default font (what files are 
 DEFAULT_FONT_SIZE = 11.0
 DISPLAY_FONT_FAMILY = DEFAULT_FONT_FAMILY  # what unformatted cells are drawn in (the skin may change it)
 DISPLAY_FONT_SIZE = DEFAULT_FONT_SIZE
-HEADER_FONT_FAMILY = "Segoe UI"
+HEADER_FONT_FAMILY = UI_FONT
 HEADER_BEVEL = False  # Windows 95 raised-button row/column headers
 
 # ---------------------------------------------------------------- skins (View > Skin)
@@ -84,7 +85,7 @@ def apply_palette(app):
     pal.setColor(QPalette.Disabled, QPalette.ButtonText, QColor("#A0A0A0"))
     pal.setColor(QPalette.Disabled, QPalette.WindowText, QColor("#A0A0A0"))
     app.setPalette(pal)
-    f = QFont("Segoe UI", 9)
+    f = QFont(UI_FONT, UI_PT)
     app.setFont(f)
     app.setStyleSheet("""
         QToolBar { background: #FFFFFF; border: none; border-bottom: 1px solid #D4D4D4; spacing: 2px; padding: 3px 6px; }
@@ -263,7 +264,7 @@ def glyph_icon(code, color="#333333", size=ICON_SIZE, bar=None, fallback=None):
 
 
 def text_icon(text, bold=False, italic=False, underline=False, strike=False, color="#333333",
-              size=ICON_SIZE, family="Segoe UI", px=None, bar=None):
+              size=ICON_SIZE, family=UI_FONT, px=None, bar=None):
     return QIcon(_SkinIcon(("text", text, bold, italic, underline, strike, color, bar),
                            lambda: _text_pm(text, bold, italic, underline, strike, color, size, family, px, bar)))
 
@@ -294,8 +295,9 @@ def _glyph_pm(code, color="#333333", size=ICON_SIZE, bar=None, fallback=None):
         p.setPen(QColor(color))
         rect = QRectF(0, 0, size, size - (4 if bar else 0))
         p.drawText(rect, Qt.AlignCenter, code)
-    elif fallback:
-        f = QFont("Segoe UI", 1)
+    elif fallback or code in GLYPH_FALLBACK:
+        fallback = fallback or GLYPH_FALLBACK[code]  # no Windows icon font (macOS, Linux)
+        f = QFont(UI_FONT, 1)
         f.setPixelSize(int(size * 0.65))
         f.setBold(True)
         p.setFont(f)
@@ -308,7 +310,7 @@ def _glyph_pm(code, color="#333333", size=ICON_SIZE, bar=None, fallback=None):
 
 
 def _text_pm(text, bold=False, italic=False, underline=False, strike=False, color="#333333",
-              size=ICON_SIZE, family="Segoe UI", px=None, bar=None):
+              size=ICON_SIZE, family=UI_FONT, px=None, bar=None):
     pm, p = _canvas(size)
     f = QFont(family)
     f.setPixelSize(px or int(size * 0.7))
@@ -383,7 +385,7 @@ def _lines_pm(kind, size=ICON_SIZE, color="#333333"):
         p.drawLine(QPointF(m, 8), QPointF(m + w, 8))
         p.drawLine(QPointF(8, m), QPointF(8, m + w))
     elif kind == "dec_inc" or kind == "dec_dec":
-        f = QFont("Segoe UI")
+        f = QFont(UI_FONT)
         f.setPixelSize(8)
         f.setBold(True)
         p.setFont(f)
@@ -398,7 +400,7 @@ def _lines_pm(kind, size=ICON_SIZE, color="#333333"):
         col = ACCENT if kind == "insert_row" else QColor("#C42B1C")
         p.fillRect(QRectF(m, m + 4.5, w, 4.5), col)
     elif kind == "sort_az" or kind == "sort_za":
-        f = QFont("Segoe UI")
+        f = QFont(UI_FONT)
         f.setPixelSize(8)
         f.setBold(True)
         p.setFont(f)
@@ -455,3 +457,12 @@ G_ZOOMOUT = ""
 G_ADD = ""
 G_DELETE = ""
 G_BRUSH = ""
+
+
+# Plain-text stand-ins for the glyphs above, for systems without the Windows icon font (macOS, Linux).
+GLYPH_FALLBACK = {
+    G_NEW: "\u25A2", G_OPEN: "\u21A5", G_SAVE: "\u2913", G_UNDO: "\u21B6", G_REDO: "\u21B7",
+    G_CUT: "\u2702", G_COPY: "\u29C9", G_PASTE: "\u2398", G_FIND: "\u2315", G_FONTCOLOR: "A",
+    G_FILL: "\u25A7", G_CLEAR: "\u232B", G_ZOOMIN: "\u2295", G_ZOOMOUT: "\u2296", G_ADD: "+",
+    G_DELETE: "\u2212", G_BRUSH: "\u270E",
+}

@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (QApplication, QComboBox, QDialog,
                                QPlainTextEdit, QStyle)
 
 from .. import ops
+from ..osinfo import IS_WIN, UI_FONT, default_spreadsheet_folder, settings_dir, ui_pt
 from ..errors import XLError
 from ..fileio import (OPEN_FILTER, READABLE, SAVE_FILTERS, WRITABLE,
                       open_file, save_file)
@@ -36,9 +37,9 @@ from .grid import Grid
 
 APP_NAME = "Macrosoft Ekxel® 2003 Private Reserve Special Cuvée"
 WINDOWS = []
-SETTINGS_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Sheets")
+SETTINGS_DIR = settings_dir()  # %APPDATA%\Sheets, ~/Library/Application Support/Sheets, ...
 SETTINGS_FILE = os.path.join(SETTINGS_DIR, "settings.json")
-DEFAULT_FOLDER = r"G:\Spreadsheets"  # used until the user picks one (File > Set Default Folder)
+DEFAULT_FOLDER = default_spreadsheet_folder()  # until the user picks one (File > Set Default Folder)
 
 NUMBER_PRESETS = [
     ("General", "General"), ("Number", "0.00"), ("Currency", "$#,##0.00"),
@@ -521,7 +522,8 @@ class MainWindow(QMainWindow):
         m.addAction(self.a_saveas)
         m.addSeparator()
         m.addAction(self.a_default_dir)
-        m.addAction(self.a_register)
+        if IS_WIN:  # Windows file associations; on a Mac use Finder's Get Info > Open with
+            m.addAction(self.a_register)
         m.addSeparator()
         m.addAction(self.a_close)
         m.addAction(self.a_exit)
@@ -767,7 +769,7 @@ class MainWindow(QMainWindow):
         self.fbar = CellEditor(in_bar=True)
         self.fbar.setFixedHeight(26)
         self.fbar.setStyleSheet("QPlainTextEdit { border: 1px solid #C8C8C8; background: white; }")
-        self.fbar.setFont(QFont("Segoe UI", 10))
+        self.fbar.setFont(QFont(UI_FONT, ui_pt(10)))
         h.addWidget(self.fbar, 1)
         self.fb_expand = QToolButton()
         self.fb_expand.setText("⌄")

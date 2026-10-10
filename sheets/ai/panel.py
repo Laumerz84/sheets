@@ -7,6 +7,7 @@ import subprocess
 import sys
 import threading
 
+from ..osinfo import UI_FONT, ui_pt
 from PySide6.QtCore import QObject, Qt, QTimer, Signal
 from PySide6.QtGui import QDesktopServices, QFont, QTextCursor
 from PySide6.QtWidgets import (QComboBox, QDockWidget, QHBoxLayout, QLabel,
@@ -37,15 +38,15 @@ def find_claude():
     override = os.environ.get("SHEETS_CLAUDE_CMD")
     if override:
         return json.loads(override)
+    from ..osinfo import claude_candidates
     exe = shutil.which("claude")
     if not exe:
-        guess = os.path.join(os.path.expanduser("~"), ".local", "bin", "claude.exe")
-        exe = guess if os.path.exists(guess) else None
+        exe = next((p for p in claude_candidates() if os.path.exists(p)), None)
     return [exe] if exe else None
 
 
 def bridge_python():
-    """python.exe (not pythonw) so the bridge has working stdio."""
+    """python.exe (not pythonw) so the bridge has working stdio. On macOS/Linux: this interpreter."""
     exe = sys.executable
     cand = os.path.join(os.path.dirname(exe), "python.exe")
     return cand if os.path.exists(cand) else exe
@@ -103,7 +104,7 @@ class ClaudePanel(QDockWidget):
         self.view.setOpenExternalLinks(False)
         self.view.anchorClicked.connect(_open_web_link)
         self.view.setStyleSheet("QTextBrowser { background: #FFFFFF; border: 1px solid #D4D4D4; padding: 4px; }")
-        self.view.document().setDefaultFont(QFont("Segoe UI", 10))
+        self.view.document().setDefaultFont(QFont(UI_FONT, ui_pt(10)))
         v.addWidget(self.view, 1)
         self.status = QLabel("")
         self.status.setStyleSheet("color: #6B6B6B;")
@@ -217,7 +218,8 @@ class ClaudePanel(QDockWidget):
         flags = 0x08000000 if sys.platform == "win32" else 0  # CREATE_NO_WINDOW
         try:
             self.proc = subprocess.Popen(args, cwd=WORK_DIR, stdin=subprocess.PIPE, stdout=subprocess.PIPE,
-                                         stderr=subprocess.PIPE, creationflags=flags)
+                                         stderr=subprocess.PIPE, creationflags=flags,
+                                         start_new_session=(sys.platform != "win32"))  # own group: Stop kills it all
         except OSError as e:
             self._done_ui()
             self._append(f"**Couldn't start Claude Code:** {_md_escape(str(e))}\n\n")
@@ -258,7 +260,11 @@ class ClaudePanel(QDockWidget):
             subprocess.run(["taskkill", "/T", "/F", "/PID", str(pid)], capture_output=True,
                            creationflags=0x08000000)
         else:
-            self.proc.kill()
+            import signal
+            try:
+                os.killpg(os.getpgid(pid), signal.SIGTERM)  # claude and the bridge it started
+            except (OSError, ProcessLookupError):
+                self.proc.kill()
         self.status.setText("Stopped.")
         if finish_now:  # window closing: don't wait for the process to report back
             self._on_finished(self.generation, None, "")

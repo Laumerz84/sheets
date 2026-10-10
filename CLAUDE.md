@@ -13,7 +13,23 @@ No API key is needed. In that chat, Claude can only read and change the open wor
 You do not write any code for this. It is already built. You only install and check.
 
 Run every command from the repo folder (the folder this file is in). The commands are for
-PowerShell or cmd on Windows.
+PowerShell or cmd on Windows. **On a Mac** use the same steps with these swaps: `./setup.sh` instead of
+`setup.bat`; `.venv/bin/python` instead of `.venv\Scripts\python.exe`; in step 4 run
+`open "<repo folder>/Ekxel.command"`; Cmd instead of Ctrl in what you tell the user; skip the Windows-only
+optional items (Start menu, register). Per-OS differences live in `sheets/osinfo.py`.
+
+**Step 0. Get the code and the two programs it needs.** Do each part only if it's missing, and
+ask the user before installing anything system-wide (these are their computer's programs):
+- The repo: if you aren't already in it, `git clone https://github.com/Laumerz84/sheets.git` into a folder
+  the user picks, then work from there. No git? Windows: `winget install Git.Git`. Mac: `xcode-select --install`.
+- Python 3.11 or newer (`python --version`; on a Mac `python3 --version`, the built-in one is too old).
+  Windows: `winget install Python.Python.3.12`. Mac: `brew install python@3.12` (no Homebrew? the
+  installer from https://www.python.org/downloads/ works too).
+- Claude Code, for the chat panel: Windows PowerShell `irm https://claude.ai/install.ps1 | iex`;
+  Mac `curl -fsSL https://claude.ai/install.sh | bash`. If you are running inside Claude Code
+  right now, it is already installed.
+Everything else (PySide6, openpyxl, xlrd, mcp, pywin32 on Windows) is installed by step 1 into
+`.venv` inside the repo. Nothing else goes system-wide.
 
 **Step 1. Install.** Run:
 
@@ -38,8 +54,27 @@ Ask them: "Have you signed in to Claude Code on this PC? If not, open a terminal
 
 Put the real folder in place of `<repo folder>`. `ReturnValue` 0 means it started.
 
-**Step 5. Tell the user how to use it.** Say: "In Ekxel, press **Ctrl+Shift+A** to open the Claude
-chat. Ask it something small, like 'put 1 to 10 in column A'. **Ctrl+Z** undoes what it did."
+**Step 5. Give the user a short tour, once Ekxel is open.** Keep it brief and friendly, about
+8 short bullet points, not a manual. On a Mac say **Cmd** wherever this says Ctrl. Cover, in this order:
+
+1. **Ctrl+Shift+A: the headline feature. Make it stand out (bold it, put it first or give it its own
+   paragraph).** It opens a Claude chat docked beside the sheet (also View > Claude). That Claude can
+   see the workbook, the cells the user has selected and what's in them. It can read, write, format,
+   sort, insert rows, add formulas, sheets and slider/spinner controls. Uses their Claude Code login,
+   no API key. While it works, the sheet is locked so edits don't collide. **Ctrl+Z undoes everything it
+   did in one step.** Suggest a first try: select some numbers and ask "add a total row under this
+   and make it bold", or "make me a loan calculator".
+2. It opens and saves `.xlsx`, `.xls`, `.csv` and `.tsv` files and works like Excel: formulas (180
+   functions), fill handle, copy/paste to and from real Excel, sort and filter, find/replace, freeze
+   panes, multiple sheets.
+3. **Alt** shows Excel-style KeyTips (Alt, H, O, I autofits columns, as in Excel). Windows only; Option
+   on a Mac doesn't do this reliably. **F1** lists all keyboard shortcuts.
+4. Insert > Slider / Spin Button links a control to a cell. Drag it and every formula updates live.
+5. View > Skin switches to an Excel 95 look; View > Cursor sets a custom mouse cursor (just for fun).
+6. File > Set Default Folder picks where Open/Save start.
+7. Only one copy runs. Opening another file adds a window to it.
+
+Then ask whether they want to try the Claude chat now.
 
 **Optional. Ask the user first, then do only what they say yes to.**
 - Start menu shortcut:

@@ -13,7 +13,7 @@ from mcp.server.mcpserver import MCPServer  # noqa: E402
 from PySide6.QtCore import QCoreApplication  # noqa: E402
 from PySide6.QtNetwork import QLocalSocket  # noqa: E402
 
-SERVER_NAME = os.environ.get("SHEETS_SERVER_NAME") or ("SheetsSpreadsheetApp-" + os.environ.get("USERNAME", "user"))
+SERVER_NAME = os.environ.get("SHEETS_SERVER_NAME") or ("SheetsSpreadsheetApp-" + (os.environ.get("USERNAME") or os.environ.get("USER") or "user"))
 TARGET = os.environ.get("SHEETS_TARGET", "")
 
 _qapp = QCoreApplication.instance() or QCoreApplication([])
