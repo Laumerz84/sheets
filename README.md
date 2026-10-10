@@ -51,8 +51,11 @@ in seconds and needs about 1.8x the file size in free RAM (Ekxel checks first). 
 whole file:
 - scrolling, Go To, typing/editing/clearing cells (your edits sit on top of the file's data and stay with
   their row through sorting and filtering), new rows below and columns to the right
-- status-bar Sum/Average/Count for whole columns, and `SUM`/`COUNT`/`COUNTA`/`AVERAGE`/`MIN`/`MAX` over
-  big ranges (e.g. `=SUM(E:E)`), computed column-wise
+- status-bar Sum/Average/Count for whole columns, and these functions over big ranges, computed
+  column-wise in about 0.5-3 s on 100M rows: `SUM`/`COUNT`/`COUNTA`/`AVERAGE`/`MIN`/`MAX`,
+  `SUMIF(S)`/`COUNTIF(S)`/`AVERAGEIF(S)`/`MAXIFS`/`MINIFS`, `VLOOKUP`/`MATCH`/`XLOOKUP`/`XMATCH`/`INDEX`
+  (e.g. `=SUMIFS(E:E,C:C,"North")`). Other functions over more than 2,000,000 cells of a big file give
+  `#CALC!` rather than freezing Ekxel.
 - Sort (stable, numbers before text, blanks last), AutoFilter (value lists for columns with up to 10,000
   different values, condition filters for any column; the row headers show the file's row numbers in blue)
 - Find (Ctrl+F) and Replace All

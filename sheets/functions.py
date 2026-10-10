@@ -270,6 +270,8 @@ def _aligned(rng, shape):
     """Values of rng resized to shape (anchored at its top-left)."""
     if isinstance(rng, RangeRef):
         sh = rng.sheet
+        if getattr(sh, "big", None) is not None and shape[0] * shape[1] > 2_000_000:
+            raise errors.CALC
         return [[sh.value(rng.r1 + i, rng.c1 + j) for j in range(shape[1])] for i in range(shape[0])]
     g = to_2d(rng)
     return [[g[i][j] if i < len(g) and j < len(g[i]) else None for j in range(shape[1])]
@@ -291,6 +293,20 @@ def _serial(d):
 
 
 # ================================================================ math
+
+def _big_ifs(name, target, pairs):
+    """SUMIF(S)/COUNTIF(S)/... over a big-file sheet, vectorised (see bigdata.ifs)."""
+    if isinstance(pairs, tuple):
+        if len(pairs) % 2:
+            raise errors.VALUE
+        pairs = [(pairs[i], pairs[i + 1]) for i in range(0, len(pairs), 2)]
+    rngs = [r for r, _ in pairs] + ([target] if target is not None else [])
+    if not any(isinstance(r, RangeRef) and getattr(r.sheet, "big", None) is not None for r in rngs):
+        return None
+    from . import bigdata
+    r = bigdata.ifs(name, target, pairs)
+    return None if r is bigdata._MISSING else r
+
 
 def _big_aggregate(name, args):
     """Whole-column SUM/COUNT/... over a big-file sheet, computed column-wise (see bigdata.py)."""
@@ -682,6 +698,9 @@ def _atan2(ctx, x, y):
 
 @fn("SUMIF", sig="range, criteria, [sum_range]")
 def _sumif(ctx, rng, crit, sum_range=MISSING):
+    fast = _big_ifs("SUMIF", sum_range if _given(sum_range) else rng, [(rng, crit)])
+    if fast is not None:
+        return fast
     shape, mask = _ifs_mask([(rng, crit)], ctx)
     vals = _aligned(sum_range if _given(sum_range) else rng, shape)
     total = 0.0
@@ -704,6 +723,9 @@ def _pairs(args):
 
 @fn("SUMIFS", sig="sum_range, criteria_range1, criteria1, ...")
 def _sumifs(ctx, sum_range, *args):
+    fast = _big_ifs("SUMIFS", sum_range, args)
+    if fast is not None:
+        return fast
     shape, mask = _ifs_mask(_pairs(args), ctx)
     vals = _aligned(sum_range, shape)
     total = 0.0
@@ -716,6 +738,9 @@ def _sumifs(ctx, sum_range, *args):
 
 @fn("COUNTIF", sig="range, criteria")
 def _countif(ctx, rng, crit):
+    fast = _big_ifs("COUNTIF", None, [(rng, crit)])
+    if fast is not None:
+        return fast
     pred = make_criteria(crit)
     if isinstance(rng, RangeRef) and not pred(None):
         return float(sum(1 for v in rng.nonblank() if pred(v)))
@@ -730,6 +755,9 @@ def _countif(ctx, rng, crit):
 
 @fn("COUNTIFS", sig="criteria_range1, criteria1, ...")
 def _countifs(ctx, *args):
+    fast = _big_ifs("COUNTIFS", None, args)
+    if fast is not None:
+        return fast
     _, mask = _ifs_mask(_pairs(args), ctx)
     return float(sum(sum(r) for r in mask))
 
@@ -743,6 +771,9 @@ def _masked_values(target, args, ctx):
 
 @fn("AVERAGEIF", sig="range, criteria, [average_range]")
 def _averageif(ctx, rng, crit, avg_range=MISSING):
+    fast = _big_ifs("AVERAGEIF", avg_range if _given(avg_range) else rng, [(rng, crit)])
+    if fast is not None:
+        return fast
     xs = _masked_values(avg_range if _given(avg_range) else rng, [rng, crit], ctx)
     if not xs:
         raise errors.DIV0
@@ -751,6 +782,9 @@ def _averageif(ctx, rng, crit, avg_range=MISSING):
 
 @fn("AVERAGEIFS", sig="average_range, criteria_range1, criteria1, ...")
 def _averageifs(ctx, avg_range, *args):
+    fast = _big_ifs("AVERAGEIFS", avg_range, args)
+    if fast is not None:
+        return fast
     xs = _masked_values(avg_range, list(args), ctx)
     if not xs:
         raise errors.DIV0
@@ -759,12 +793,18 @@ def _averageifs(ctx, avg_range, *args):
 
 @fn("MAXIFS", sig="max_range, criteria_range1, criteria1, ...")
 def _maxifs(ctx, rng, *args):
+    fast = _big_ifs("MAXIFS", rng, args)
+    if fast is not None:
+        return fast
     xs = _masked_values(rng, list(args), ctx)
     return max(xs) if xs else 0.0
 
 
 @fn("MINIFS", sig="min_range, criteria_range1, criteria1, ...")
 def _minifs(ctx, rng, *args):
+    fast = _big_ifs("MINIFS", rng, args)
+    if fast is not None:
+        return fast
     xs = _masked_values(rng, list(args), ctx)
     return min(xs) if xs else 0.0
 
@@ -1615,6 +1655,8 @@ def _lookup_eq(a, b):
 
 
 def _find_exact(vec, x, wildcard=True, reverse=False):
+    if hasattr(vec, "find_exact"):  # bigdata.LazyColumn: vectorised over millions of rows
+        return vec.find_exact(x, wildcard, reverse)
     idx = range(len(vec) - 1, -1, -1) if reverse else range(len(vec))
     if isinstance(x, str) and wildcard and _has_wild(x):
         for i in idx:
@@ -1665,6 +1707,11 @@ def _find_approx(vec, x, descending=False):
 def _vector(v):
     """1-D list from a range/array (row or column)."""
     if isinstance(v, RangeRef):
+        if getattr(v.sheet, "big", None) is not None and (v.ncols == 1 or v.nrows > 1):
+            from .bigdata import lazy_column
+            lazy = lazy_column(v)
+            if lazy is not None:
+                return lazy
         if v.ncols == 1:
             return v.column(0)
         if v.nrows == 1:
@@ -1689,7 +1736,7 @@ def _vlookup(ctx, x, table, col, approx=MISSING):
             raise errors.VALUE
         if col > table.ncols:
             raise errors.REF
-        keys = table.column(0)
+        keys = _vector(RangeRef(table.sheet, table.r1, table.c1, table.r2, table.c1))
         i = _find_approx(keys, x) if approx else _find_exact(keys, x)
         if i < 0:
             raise errors.NA
@@ -1774,6 +1821,8 @@ def _xfind(x, vec, mm, sm):
     i = _find_exact(vec, x, wildcard=False, reverse=rev)
     if i >= 0:
         return i
+    if hasattr(vec, "find_nearest"):
+        return vec.find_nearest(x, mm)
     best, bi = None, -1
     for j, v in enumerate(vec):
         if not _same_kind(v, x):

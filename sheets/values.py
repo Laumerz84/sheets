@@ -14,6 +14,7 @@ class _Missing:
 
 
 MISSING = _Missing()
+BIG_CELL_LIMIT = 2_000_000  # see RangeRef._big_guard
 
 
 class RangeRef:
@@ -43,6 +44,14 @@ class RangeRef:
     def eff_c2(self):
         return min(self.c2, self.sheet.max_col)
 
+    def _big_guard(self):
+        """Reading millions of cells of a big-file sheet one by one would freeze Ekxel for minutes:
+        functions without a vectorised path (bigdata.aggregate / bigdata.ifs) give #CALC! instead."""
+        if getattr(self.sheet, "big", None) is not None:
+            n = (self.eff_r2() - self.r1 + 1) * (self.eff_c2() - self.c1 + 1)
+            if n > BIG_CELL_LIMIT:
+                raise errors.CALC
+
     def value(self, i=0, j=0):
         r, c = self.r1 + i, self.c1 + j
         if r > self.r2 or c > self.c2:
@@ -51,6 +60,7 @@ class RangeRef:
 
     def values(self):
         """Row-major values of the used part of the range (blanks included)."""
+        self._big_guard()
         val = self.sheet.value
         er2, ec2 = self.eff_r2(), self.eff_c2()
         for r in range(self.r1, er2 + 1):
@@ -59,6 +69,7 @@ class RangeRef:
 
     def nonblank(self):
         """Faster iteration over non-blank values only (order not guaranteed)."""
+        self._big_guard()
         sh = self.sheet
         er2, ec2 = self.eff_r2(), self.eff_c2()
         area = (er2 - self.r1 + 1) * (ec2 - self.c1 + 1)
@@ -76,11 +87,13 @@ class RangeRef:
 
     def rows(self):
         """2-D list of the used part (rows clamped to the sheet's used extent)."""
+        self._big_guard()
         val = self.sheet.value
         er2, ec2 = self.eff_r2(), self.eff_c2()
         return [[val(r, c) for c in range(self.c1, ec2 + 1)] for r in range(self.r1, er2 + 1)]
 
     def column(self, j):
+        self._big_guard()
         val = self.sheet.value
         c = self.c1 + j
         return [val(r, c) for r in range(self.r1, self.eff_r2() + 1)]

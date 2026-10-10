@@ -823,6 +823,284 @@ def aggregate(name, args):
     return _MISSING
 
 
+IFS_FUNCS = {"SUMIF", "SUMIFS", "COUNTIF", "COUNTIFS", "AVERAGEIF", "AVERAGEIFS", "MAXIFS", "MINIFS"}
+
+
+def _crit_mask(col, num, crit):
+    """Arrow version of functions.make_criteria for one chunk: text column + its numbers."""
+    from .functions import _has_wild, _wild_compile
+    from .numfmt import parse_input
+    from .values import MISSING, is_num, scalar
+    from .errors import XLError
+    pa, pc = arrow()
+    crit = scalar(crit)
+    if isinstance(crit, XLError):
+        raise crit
+    isnum = pc.is_valid(num)
+    blank = pc.equal(col, "")
+    is_text = pc.and_(pc.invert(isnum), pc.invert(blank))
+    if crit is None or crit is MISSING:
+        return blank
+    if isinstance(crit, bool):
+        return pc.match_substring_regex(col, "^" + ("TRUE" if crit else "FALSE") + "$", ignore_case=True)
+    if is_num(crit):
+        return pc.fill_null(pc.equal(num, float(crit)), False)
+    st = str(crit)
+    op = "="
+    for p_ in (">=", "<=", "<>", ">", "<", "="):
+        if st.startswith(p_):
+            op, st = p_, st[len(p_):]
+            break
+    x, _ = parse_input(st) if st.strip() else (None, None)
+    if op in ("=", "<>"):
+        if st == "":
+            m = blank
+        elif is_num(x):
+            m = pc.or_(pc.fill_null(pc.equal(num, float(x)), False),
+                       pc.match_substring_regex(col, r"^\s*" + re.escape(st.strip()) + r"\s*$", ignore_case=True))
+        elif st.upper() in ("TRUE", "FALSE"):
+            m = pc.match_substring_regex(col, "^" + st.upper() + "$", ignore_case=True)
+        elif _has_wild(st):
+            m = pc.and_(is_text, pc.match_substring_regex(col, "^(?s:" + _wild_compile(st).pattern + ")$",
+                                                          ignore_case=True))
+        else:
+            m = pc.and_(is_text, pc.match_substring_regex(col, "^" + re.escape(st) + "$", ignore_case=True))
+        return pc.invert(m) if op == "<>" else m
+    fn = {">": pc.greater, "<": pc.less, ">=": pc.greater_equal, "<=": pc.less_equal}[op]
+    if is_num(x):
+        return pc.fill_null(fn(num, float(x)), False)
+    return pc.and_(is_text, pc.fill_null(fn(pc.utf8_lower(col), st.lower()), False))
+
+
+def ifs(name, target, pairs):
+    """SUMIF(S)/COUNTIF(S)/AVERAGEIF(S)/MAXIFS/MINIFS over single-column ranges of one big sheet,
+    vectorised. target: the range summed/averaged (None for COUNTIF(S)). Returns the result, or
+    _MISSING when the arguments don't fit this path (the normal code then runs)."""
+    from . import errors
+    from .functions import make_criteria
+    from .values import RangeRef, is_num
+    pa, pc = arrow()
+    rngs = [r for r, _ in pairs] + ([target] if target is not None else [])
+    if not all(isinstance(r, RangeRef) for r in rngs):
+        return _MISSING
+    sheet = rngs[0].sheet
+    if not is_big(sheet) or any(r.sheet is not sheet or r.c1 != r.c2 for r in rngs):
+        return _MISSING
+    big = sheet.big
+    r1 = pairs[0][0].r1
+    height = pairs[0][0].r2 - r1 + 1
+    if any(r.r2 - r.r1 + 1 != height for r, _ in pairs):
+        raise errors.VALUE
+    if target is not None:
+        t_r1 = target.r1
+    if any(r.r1 != r1 for r, _ in pairs) or (target is not None and t_r1 != r1):
+        return _MISSING  # offset ranges: rare, leave to the normal code (guarded by the cell budget)
+    r2 = min(r1 + height - 1, sheet.max_row)
+    cols = sorted({r.c1 for r in rngs})
+    over = _overrides(sheet, r1, min(cols), r2, max(cols))
+    special = sorted({r for c in cols for r in over.get(c, {})})
+    preds = [(r.c1, make_criteria(cr)) for r, cr in pairs]
+    tc = target.c1 if target is not None else None
+
+    total, count, lo, hi = 0.0, 0, None, None
+    dr2 = min(r2, big.nview - 1)
+    if dr2 >= r1:
+        n = dr2 - r1 + 1
+        mask = None
+        for (rng, cr) in pairs:
+            c = rng.c1
+            if c < big.ncols:
+                m = pmap2(lambda ch, nm, cr=cr: _crit_mask(ch, nm, cr),
+                          big.column_part(big.cols[c], r1, dr2), big.column_part(big.numeric(c), r1, dr2))
+            else:  # a column past the file's data: every row is blank there
+                m = pa.repeat(pa.scalar(bool(make_criteria(cr)(None))), n)
+            mask = m if mask is None else pc.and_(mask, m)
+        if isinstance(mask, pa.ChunkedArray):
+            mask = mask.combine_chunks()
+        inside = [r - r1 for r in special if r <= dr2]
+        if inside:
+            mask = pc.replace_with_mask(mask, _position_mask(n, inside), pa.repeat(False, len(inside)))
+        if target is None:
+            count += pc.sum(mask).as_py() or 0
+        elif tc < big.ncols:
+            vals = pc.filter(big.column_part(big.numeric(tc), r1, dr2), mask)
+            k = pc.count(vals).as_py()
+            if k:
+                count += k
+                total += pc.sum(vals).as_py() or 0.0
+                mm = pc.min_max(vals).as_py()
+                lo, hi = mm["min"], mm["max"]
+    # edited/formula cells and rows past the data, the normal (cell by cell) way
+    rest = [r for r in special if r <= dr2] + [r for r in range(max(r1, dr2 + 1), r2 + 1)]
+    for r in rest:
+        if all(pred(sheet.value(r, c)) for c, pred in preds):
+            if target is None:
+                count += 1
+                continue
+            v = sheet.value(r, tc)
+            if is_num(v) and not isinstance(v, bool):
+                count += 1
+                total += v
+                lo = v if lo is None else min(lo, v)
+                hi = v if hi is None else max(hi, v)
+    if target is None and r1 + height - 1 > r2 and all(pred(None) for _, pred in preds):
+        count += (r1 + height - 1) - r2  # blank rows below the used area match "" criteria too
+    if name in ("SUMIF", "SUMIFS"):
+        return float(total)
+    if name in ("COUNTIF", "COUNTIFS"):
+        return float(count)
+    if name in ("AVERAGEIF", "AVERAGEIFS"):
+        if not count:
+            raise errors.DIV0
+        return total / count
+    if name == "MAXIFS":
+        return float(hi if hi is not None else 0.0)
+    if name == "MINIFS":
+        return float(lo if lo is not None else 0.0)
+    return _MISSING
+
+
+class LazyColumn:
+    """A tall single-column range of a big sheet as a sequence for the lookup functions
+    (VLOOKUP/MATCH/XLOOKUP...): binary searches read only the few cells they visit, and exact
+    matches run vectorised through find_exact. Iterating it whole raises #CALC! instead of
+    reading millions of cells one by one."""
+
+    def __init__(self, sheet, r1, r2, c):
+        self.sheet, self.r1, self.c = sheet, r1, c
+        self.n = max(0, min(r2, sheet.max_row) - r1 + 1)
+
+    def __len__(self):
+        return self.n
+
+    def __getitem__(self, i):
+        from . import errors
+        if isinstance(i, slice):
+            raise errors.CALC
+        if i < 0:
+            i += self.n
+        if not 0 <= i < self.n:
+            raise IndexError(i)
+        return self.sheet.value(self.r1 + i, self.c)
+
+    def __iter__(self):
+        from . import errors
+        raise errors.CALC
+
+    def _search(self, arrow_mask, pred, pick):
+        """Positions where the cell matches: arrow_mask(text_chunk, number_chunk) for the file's
+        cells, pred(value) for edited/formula cells and rows past the data; pick chooses one."""
+        pa, pc = arrow()
+        big = self.sheet.big
+        r1, r2 = self.r1, self.r1 + self.n - 1
+        c = self.c
+        special = sorted(over_rows for over_rows in _overrides(self.sheet, r1, c, r2, c).get(c, {}))
+        dr2 = min(r2, big.nview - 1)
+        found = []
+        if dr2 >= r1 and c < big.ncols:
+            n = dr2 - r1 + 1
+            mask = pmap2(arrow_mask, big.column_part(big.cols[c], r1, dr2), big.column_part(big.numeric(c), r1, dr2))
+            if isinstance(mask, pa.ChunkedArray):
+                mask = mask.combine_chunks()
+            inside = [r - r1 for r in special if r <= dr2]
+            if inside:
+                mask = pc.replace_with_mask(mask, _position_mask(n, inside), pa.repeat(False, len(inside)))
+            found = pick(mask)
+        rest = [r for r in special if r <= dr2] + list(range(max(r1, dr2 + 1), r2 + 1))
+        for r in rest:
+            if pred(self.sheet.value(r, c)):
+                found.append(r - r1)
+        return found
+
+    def find_exact(self, x, wildcard=True, reverse=False):
+        from .functions import _has_wild, _lookup_eq, _wild_compile, wild_match
+        from .values import is_num
+        pa, pc = arrow()
+
+        def text_mask(rx):
+            def m(ch, nm):
+                is_text = pc.and_(pc.invert(pc.is_valid(nm)), pc.not_equal(ch, ""))
+                return pc.and_(is_text, pc.match_substring_regex(ch, rx, ignore_case=True))
+            return m
+        if isinstance(x, str) and wildcard and _has_wild(x):
+            amask = text_mask("^(?s:" + _wild_compile(x).pattern + ")$")
+            pred = lambda v: isinstance(v, str) and wild_match(x, v)
+        elif isinstance(x, str):
+            amask = text_mask("^" + re.escape(x) + "$")
+            xl = x.lower()
+            pred = lambda v: isinstance(v, str) and v.lower() == xl
+        elif isinstance(x, bool):
+            amask = lambda ch, nm: pc.match_substring_regex(ch, "^" + ("TRUE" if x else "FALSE") + "$", ignore_case=True)
+            pred = lambda v: _lookup_eq(v, x)
+        elif is_num(x):
+            amask = lambda ch, nm: pc.fill_null(pc.equal(nm, float(x)), False)
+            pred = lambda v: _lookup_eq(v, x)
+        else:
+            return -1
+
+        def pick(mask):
+            if reverse:
+                idx = pc.indices_nonzero(mask)
+                return [idx[len(idx) - 1].as_py()] if len(idx) else []
+            i = pc.index(mask, True).as_py()
+            return [i] if i >= 0 else []
+        found = self._search(amask, pred, pick)
+        if not found:
+            return -1
+        return max(found) if reverse else min(found)
+
+    def find_nearest(self, x, mode):
+        """XLOOKUP/XMATCH match_mode -1 (next smaller) / 1 (next larger) for numbers."""
+        from . import errors
+        from .values import is_num
+        pa, pc = arrow()
+        if not is_num(x) or isinstance(x, bool):
+            raise errors.CALC
+        x = float(x)
+        cmp = pc.less if mode == -1 else pc.greater
+
+        def amask(ch, nm):
+            return pc.fill_null(cmp(nm, x), False)
+
+        cand = {}
+
+        def pick(mask):
+            big = self.sheet.big
+            nums = big.column_part(big.numeric(self.c), self.r1, self.r1 + len(mask) - 1)
+            vals = pc.filter(nums, mask)
+            if not len(vals):
+                return []
+            best = (pc.max if mode == -1 else pc.min)(vals).as_py()
+            hit = pc.fill_null(pc.equal(nums, best), False)
+            if isinstance(hit, pa.ChunkedArray):
+                hit = hit.combine_chunks()
+            hit = pc.and_(hit, mask)
+            i = pc.index(hit, True).as_py()
+            cand[i] = best
+            return [i]
+
+        def pred(v):
+            return is_num(v) and not isinstance(v, bool) and (v < x if mode == -1 else v > x)
+        found = self._search(amask, pred, pick)
+        best_i, best_v = -1, None
+        for i in sorted(found):
+            v = cand.get(i)
+            if v is None:
+                v = self.sheet.value(self.r1 + i, self.c)
+            if best_v is None or (v > best_v if mode == -1 else v < best_v):
+                best_i, best_v = i, v
+        return best_i
+
+
+def lazy_column(rng):
+    """LazyColumn for a tall single-column (or first-column) range of a big sheet, else None."""
+    if getattr(rng.sheet, "big", None) is None:
+        return None
+    if min(rng.r2, rng.sheet.max_row) - rng.r1 + 1 <= 50_000:
+        return None
+    return LazyColumn(rng.sheet, rng.r1, rng.r2, rng.c1)
+
+
 # ================================================================ navigation
 def current_region(sheet, r, c):
     """The data block around (r, c): the whole file's table when the cell is inside it."""
