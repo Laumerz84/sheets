@@ -150,5 +150,23 @@ def add_control(kind: str, linked_cell: str, place: str | None = None, min: floa
                 step=step, sheet=sheet)
 
 
+@server.tool()
+def add_chart(data_range: str, chart_type: str = "column", title: str | None = None, place: str | None = None,
+              series_in: str | None = None, x_axis_title: str | None = None, y_axis_title: str | None = None,
+              legend: str | None = None, data_labels: bool = False, sheet: str | None = None) -> dict[str, Any]:
+    """Add an Excel-style chart linked to cells, like Insert > Chart: it follows the cells (edit a number and
+    the chart updates). data_range = the cells to plot including the header row / first label column,
+    e.g. 'A1:D7'; Excel's rules pick series (a header row gives series names, a first column of text gives
+    the category labels; series_in='columns' or 'rows' forces the direction). chart_type: column,
+    stacked_column, percent_column, bar, stacked_bar, percent_bar, line, line_markers, pie, doughnut,
+    area, stacked_area, percent_area, scatter (first column = X values), scatter_lines, scatter_smooth,
+    combo (columns + lines) or combo_secondary (lines on a second axis). place = top-left cell like 'H2'
+    or a range like 'H2:N18' for its size (default: right of the data). legend: right, left, top, bottom or
+    none. The user can click the chart to move, resize and format it. Large ranges (big files) are sampled."""
+    return call("add_chart", data_range=data_range, chart_type=chart_type, title=title, place=place,
+                series_in=series_in, x_axis_title=x_axis_title, y_axis_title=y_axis_title, legend=legend,
+                data_labels=data_labels, sheet=sheet)
+
+
 if __name__ == "__main__":
     server.run("stdio")

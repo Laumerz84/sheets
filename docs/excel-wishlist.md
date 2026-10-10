@@ -30,7 +30,6 @@ Pressing one of these KeyTips in Ekxel shows "isn't in Ekxel yet" and counts a t
 |  | Alt M N | Name Manager | Name Manager: list, edit and delete the workbook's defined names. | not built |
 |  | Alt M P | Trace precedents | Trace Precedents: draw arrows from the cells a formula uses to the formula cell. | not built |
 |  | Alt M V | Evaluate formula | Evaluate Formula: step through a formula's calculation one part at a time. | not built |
-|  | Alt N C | Charts | Insert a chart (column, bar, line, pie, scatter, area...) from the selected data, with chart titles, axes, legend and styling. Ekxel also can't keep charts when re-saving Excel files. | not built |
 |  | Alt N I | Hyperlink | Insert Link (Ctrl+K): make a cell a clickable link to a web page, file or another cell. | not built |
 |  | Alt N P | Pictures | Insert Pictures: place an image on the sheet. | not built |
 |  | Alt N S H | Shapes | Insert Shapes: draw rectangles, arrows, callouts and other shapes. | not built |
@@ -168,6 +167,7 @@ Press and release Alt, then type the letters (or hold Alt for the first letter).
 **Insert**
 
 - `Alt N V` PivotTable
+- `Alt N C` Charts
 
 **File**
 

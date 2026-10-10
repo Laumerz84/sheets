@@ -6,6 +6,9 @@ Rows go to 1,000,000,000 (`refs.MAX_ROWS`): never loop to MAX_ROWS, clamp to `sh
 100 MB open as a `bigdata.BigSheet` (pyarrow columns + edits overlay; iterating `values` yields edits only,
 see the module docstring). Whole-file work there must be vectorised in `bigdata.py`; cell-by-cell code
 calls `ops._guard`/`bigdata.check_area`, which raises `TooBig` (shown as a message by `app.py`).
+Charts: model in `charts.py`, QPainter drawing in `ui/chart_paint.py`, the grid overlay / mouse / menus in
+`ui/charts_ui.py`, dialogs in `ui/chart_dialogs.py`, Format pane in `ui/chart_pane.py`, xlsx in `chart_xlsx.py`
+(stored in `Sheet.charts` like `controls`; JSON in the hidden `_EkxelControls` sheet; `add_chart` Claude tool).
 Tests: `.venv\Scripts\python.exe -m pytest` (offscreen Qt). Screenshots: `tools\snapshot.py`.
 Live Claude check (uses the user's Claude usage): `tools\e2e_claude.py "request"`.
 
@@ -74,6 +77,7 @@ Put the real folder in place of `<repo folder>`. `ReturnValue` 0 means it starte
 3. **Alt** shows Excel-style KeyTips (Alt, H, O, I autofits columns, as in Excel). Windows only; Option
    on a Mac doesn't do this reliably. **F1** lists all keyboard shortcuts.
 4. Insert > Slider / Spin Button links a control to a cell. Drag it and every formula updates live.
+   Insert > Chart (Alt N C, or Alt+F1 for an instant one) makes Excel-style charts linked to the cells.
 5. View > Skin switches to an Excel 95 look; View > Cursor sets a custom mouse cursor (just for fun).
 6. File > Set Default Folder picks where Open/Save start.
 7. Only one copy runs. Opening another file adds a window to it.

@@ -76,6 +76,9 @@ def _color(c, theme, default=None):
     return default
 
 
+FOREIGN_CHARTS = "charts made in another program"   # Ekxel's own charts are saved and restored (chart_xlsx.py)
+
+
 def _detect_lost(path):
     lost = []
     try:
@@ -84,7 +87,7 @@ def _detect_lost(path):
     except (zipfile.BadZipFile, OSError):
         return lost
     if any(n.startswith("xl/charts/") for n in names):
-        lost.append("charts")
+        lost.append(FOREIGN_CHARTS)
     if any(n.startswith("xl/media/") for n in names):
         lost.append("pictures")
     if any(n.startswith("xl/drawings/") and n.endswith(".xml") for n in names) and not lost:
@@ -316,6 +319,10 @@ def load_xlsx(path, progress=None):
         wb.sheets.append(Sheet(wb, "Sheet1"))
     if controls_ws is not None:
         _read_controls(controls_ws, wb)
+    from . import chart_xlsx
+    chart_xlsx.drop_written_copies(wb)      # Ekxel's own charts come back from the hidden sheet
+    if FOREIGN_CHARTS in wb.xl_lost_features and not chart_xlsx.foreign_charts(path, wb):
+        wb.xl_lost_features.remove(FOREIGN_CHARTS)  # every chart in the file is one Ekxel made and restores
 
     if needs_cache:
         _load_cached_values(path, wb, needs_cache)
@@ -387,7 +394,10 @@ def _write_controls(book, wb):
     if CONTROLS_SHEET in book.sheetnames:
         book.remove(book[CONTROLS_SHEET])
     from .pivot import to_json
+    from . import chart_xlsx
     rows = []
+    for sheet_name, cj in chart_xlsx.json_rows(wb):
+        rows.append(json.dumps({"sheet": sheet_name, "kind": "chart", "chart": cj}))
     for sh in wb.sheets:
         for c in getattr(sh, "controls", []):
             rows.append(json.dumps({"sheet": sh.name, "kind": c["kind"], "place": list(c["place"]),
@@ -398,8 +408,9 @@ def _write_controls(book, wb):
         return
     ws = book.create_sheet(CONTROLS_SHEET)
     ws.sheet_state = "veryHidden"
-    ws["A1"] = ("Ekxel form controls (sliders / spin buttons) and PivotTable definitions, one JSON object "
-                "per row. Deleting it keeps the numbers but loses the controls and the pivots' field setup.")
+    ws["A1"] = ("Ekxel form controls (sliders / spin buttons), charts and PivotTable definitions, one JSON object "
+                "per row. Deleting it keeps the numbers and the charts Excel shows but loses the controls and "
+                "the charts' and pivots' full Ekxel setup.")
     for i, row in enumerate(rows, start=2):
         ws.cell(row=i, column=1, value=row).data_type = "s"
 
@@ -416,6 +427,10 @@ def _read_controls(ws, wb):
             if d["kind"] == "pivot":
                 from .pivot import from_json
                 sh.pivots = sh.pivots + [from_json(d["pivot"])]
+                continue
+            if d["kind"] == "chart":
+                from . import chart_xlsx
+                chart_xlsx.read_json(wb, d["sheet"], d["chart"])
                 continue
             sh.controls = sh.controls + [make_control(d["kind"], tuple(d["place"]), tuple(d["link"]),
                                                       d["min"], d["max"], d["step"])]
@@ -637,6 +652,8 @@ def save_xlsx(wb, path):
             ws.sheet_view.tabSelected = (i == wb.active)
     except (ValueError, IndexError, AttributeError):
         pass
+    from . import chart_xlsx
+    chart_xlsx.write_charts(wb)       # real Excel charts (Ekxel's full setup goes in the hidden sheet below)
     _write_controls(book, wb)
     if reuse:
         _update_defined_names(book, wb)

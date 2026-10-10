@@ -77,6 +77,9 @@ class Axis:
         return max(0, min(self.count - 1, i))
 
 
+_PX_LIMIT = 1 << 29
+
+
 class Band:
     __slots__ = ("items", "p0", "p1", "mapf", "first", "last", "frozen")
 
@@ -84,7 +87,8 @@ class Band:
         self.items = items
         self.p0 = p0
         self.p1 = p1
-        self.mapf = mapf
+        # pixel positions far off screen (row 1,000,000,000 is ~20e9 px) must still fit Qt's 32-bit ints
+        self.mapf = lambda i, f=mapf: max(-_PX_LIMIT, min(_PX_LIMIT, f(i)))
         self.frozen = frozen
         self.first = items[0][0] if items else 0
         self.last = items[-1][0] if items else -1
@@ -583,6 +587,9 @@ class Grid(QWidget):
             def run():
                 self._controls_pending = False
                 layer.sync()
+                charts = getattr(self, "chart_layer", None)
+                if charts is not None:
+                    charts.sync()   # charts follow the cells (ui/charts_ui.py)
             QTimer.singleShot(0, run)
         p = QPainter(self)
         W, H = self.width(), self.height()

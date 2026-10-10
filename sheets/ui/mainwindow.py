@@ -334,6 +334,9 @@ class MainWindow(QMainWindow):
         from .controls import ControlLayer
         self.control_layer = ControlLayer(self)
         self.grid.control_layer = self.control_layer
+        from .charts_ui import ChartLayer
+        self.chart_layer = ChartLayer(self)   # charts floating over the cells (charts.py)
+        self.grid.chart_layer = self.chart_layer
 
         self.stats_timer = QTimer(self)
         self.stats_timer.setSingleShot(True)
@@ -457,6 +460,13 @@ class MainWindow(QMainWindow):
                               tip="A slider linked to a cell: drag it to change the cell's number")
         self.a_ins_spinner = A("Spin Button...", lambda: self.insert_control("spinner"),
                                tip="Up/down arrows linked to a cell: click to step its number")
+        from .charts_ui import chart_icon
+        self.a_ins_chart = A("&Chart...", lambda: self.chart_layer.insert_dialog(), icon=chart_icon(),
+                             tip="Insert a chart (column, line, pie, bar, area, scatter, combo) from the selected data")
+        self.a_chart_quick = A("Chart Now (Clustered Column)", lambda: self.chart_layer.quick_chart(), "Alt+F1",
+                               tip="Alt+F1: a clustered column chart of the selected data, right away")
+        self.a_chart_sheet = A("Chart on a New Sheet", lambda: self.chart_layer.chart_on_new_sheet(), "F11",
+                               tip="F11: a chart of the selected data on a new sheet of its own")
         self.a_del_rows = A("Delete Sheet Ro&ws", lambda: self.delete_rows_cols("row"), icon=S.lines_icon("delete_row"))
         self.a_del_cols = A("Delete Sheet Colu&mns", lambda: self.delete_rows_cols("col"))
         self.a_insert_smart = A("Insert", self.insert_smart, ["Ctrl++", "Ctrl+Shift+="])
@@ -570,8 +580,8 @@ class MainWindow(QMainWindow):
 
         m = mb.addMenu("&Insert")
         for a in (self.a_ins_rows, self.a_ins_cols, self.a_new_sheet, None, self.a_autosum,
-                  self.a_insert_func, None, self.a_today, self.a_now, None, self.a_pivot, None,
-                  self.a_ins_slider, self.a_ins_spinner):
+                  self.a_insert_func, None, self.a_today, self.a_now, None, self.a_pivot, self.a_ins_chart,
+                  self.a_chart_quick, self.a_chart_sheet, None, self.a_ins_slider, self.a_ins_spinner):
             m.addSeparator() if a is None else m.addAction(a)
 
         m = mb.addMenu("F&ormat")
@@ -752,6 +762,11 @@ class MainWindow(QMainWindow):
         for a in (self.a_freeze, self.a_freeze_row, self.a_freeze_col, self.a_unfreeze):
             fzm.addAction(a)
         tb.addWidget(self._tool_button(S.lines_icon("freeze"), "Freeze Panes", fzm, None))
+        from .charts_ui import build_chart_menu
+        cm = QMenu(self)
+        build_chart_menu(self, cm)
+        tb.addWidget(self._tool_button(self.a_ins_chart.icon(), "Insert Chart (Alt N C)", cm,
+                                       lambda: self.chart_layer.insert_dialog()))
         tb.addSeparator()
         tb.addAction(self.a_claude)
 
@@ -1493,6 +1508,8 @@ class MainWindow(QMainWindow):
     # ================================================================ clipboard
     def copy(self, cut=False):
         self._prep()
+        if self.chart_layer.try_copy(cut):   # a selected chart is copied instead of cells
+            return
         sh = self.sheet
         if len(self.grid.sel.rects) > 1:
             QMessageBox.information(self, APP_NAME, "This command can't be used on multiple selections.")
@@ -1526,6 +1543,8 @@ class MainWindow(QMainWindow):
 
     def paste(self, values_only=False, formats_only=False, transpose=False):
         self._prep()
+        if self.chart_layer.try_paste():     # the clipboard holds a copied chart
+            return
         sh = self.sheet
         text = QApplication.clipboard().text()
         rect = self.grid.sel.rects[-1]
@@ -1595,6 +1614,8 @@ class MainWindow(QMainWindow):
     # ================================================================ editing commands
     def clear_contents(self):
         self._prep()
+        if self.chart_layer.try_delete():    # Delete with a chart selected removes the chart
+            return
         self._push_states(ops.clear_contents(self.sheet, self.sel_rects()), "Clear Contents")
 
     def clear_formats(self):
@@ -2208,6 +2229,9 @@ class MainWindow(QMainWindow):
             sh.freeze = src.freeze
             sh.freeze_origin = src.freeze_origin
             sh.controls = list(getattr(src, "controls", []))
+            from .. import charts as _charts   # the copy's charts read the copy's own cells
+            sh.charts = [dict(_charts.rename_sheet(c, src.name, name), id=_charts.new_id())
+                         for c in getattr(src, "charts", [])]
             sh.show_grid = src.show_grid
             sh.zoom = src.zoom
             sh.recompute_extent()
@@ -3125,6 +3149,9 @@ class MainWindow(QMainWindow):
 <tr><td><b>Ctrl+`</b></td><td>Show formulas</td></tr>
 <tr><td><b>Ctrl+Mouse wheel</b></td><td>Zoom</td></tr>
 <tr><td><b>F9</b></td><td>Recalculate</td></tr>
+<tr><td><b>Alt+F1 / F11</b></td><td>Chart of the selected data on this sheet / on a new sheet &nbsp; (Alt N C: chart gallery)</td></tr>
+<tr><td><b>Chart selected</b></td><td>Delete removes it, Ctrl+C / X / V / D copy, cut, paste, duplicate, arrow keys move it,
+double-click or Enter opens Format Chart</td></tr>
 </table>"""
         box = QMessageBox(self)
         box.setWindowTitle("Keyboard Shortcuts")

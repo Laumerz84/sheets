@@ -131,6 +131,9 @@ class WorkbookTools:
             if getattr(sh, "controls", None):
                 from ..ui.controls import describe
                 info["controls"] = [describe(c) for c in sh.controls]
+            if getattr(sh, "charts", None):
+                from .. import charts as _charts
+                info["charts"] = [_charts.describe(sh, c) for c in sh.charts]
             out.append(info)
         g = self.win.grid
         r, c = g.sel.active
@@ -386,6 +389,53 @@ class WorkbookTools:
         self.win.grid.update()
         return {"added": describe(ctl), "sheet": sh.name}
 
+    def add_chart(self, data_range, chart_type="column", title=None, place=None, series_in=None,
+                  x_axis_title=None, y_axis_title=None, legend=None, data_labels=False, sheet=None):
+        """An Excel-style chart linked to the cells in data_range (it updates when they change)."""
+        from .. import charts as C
+        from ..ui.commands import MetaCommand
+        sh, rect = self._range(data_range, sheet)
+        rect = C.clamp_rect(sh, self._clamp(sh, rect))
+        key_ = str(chart_type or "column").strip().lower().replace(" ", "_").replace("-", "_")
+        ctype = CHART_TYPE_NAMES.get(key_)
+        if ctype is None:
+            raise ToolError(f"Unknown chart_type {chart_type!r}. Use one of: {', '.join(sorted(CHART_TYPE_NAMES))}.")
+        by = {None: None, "": None, "columns": "cols", "cols": "cols", "rows": "rows"}.get(
+            (series_in or "").strip().lower() if series_in else None, "?")
+        if by == "?":
+            raise ToolError("series_in must be 'columns' or 'rows' (or left out for Excel's automatic choice).")
+        home = sh
+        if place:
+            home, prect = self._range(place, sh.name)
+            if prect[2] >= MAX_ROWS - 1 or prect[3] >= MAX_COLS - 1:
+                raise ToolError("place must be a cell like 'H2' or a small range like 'H2:N18'.")
+            if prect[0] == prect[2] and prect[1] == prect[3]:
+                anchors = C.place_at_cell(home, prect[0], prect[1])
+            else:
+                anchors = ([prect[0], prect[1], 0, 0], [prect[2] + 1, prect[3] + 1, 0, 0])
+        else:
+            anchors = C.free_place(sh, rect[0], rect[3] + 2)
+        try:
+            ch = C.make_chart(sh, rect, ctype, by, anchors=anchors, home=home)
+        except ValueError as e:
+            raise ToolError(str(e))
+        if title is not None:
+            ch["title"] = title
+        if x_axis_title:
+            ch["x_title"] = x_axis_title
+        if y_axis_title:
+            ch["y_title"] = y_axis_title
+        if legend:
+            if legend not in C.LEGENDS:
+                raise ToolError(f"legend must be one of {', '.join(C.LEGENDS)}.")
+            ch["legend"] = legend
+        ch["labels"] = bool(data_labels)
+        self._writing()
+        self.win.undo.push(MetaCommand(self.win, home, {"charts": (list(home.charts), home.charts + [ch])},
+                                       "Claude", relayout=False))
+        self.win.grid.update()
+        return {"added": C.describe(home, ch), "sheet": home.name}
+
     def select_range(self, range, sheet=None):
         sh, rect = self._range(range, sheet)
         self.win.show_sheet(sh)
@@ -417,7 +467,17 @@ class WorkbookTools:
 
 TOOLS = {n: n for n in ("workbook_info", "read_range", "write_range", "format_range", "clear_range",
                         "add_sheet", "sort_range", "insert_or_delete", "find", "set_column_width",
-                        "select_range", "add_control")}
+                        "select_range", "add_control", "add_chart")}
+
+# names Claude may use for chart_type -> charts.TYPES keys
+CHART_TYPE_NAMES = {
+    "column": "col", "clustered_column": "col", "stacked_column": "col_stacked", "percent_column": "col_pct",
+    "100%_stacked_column": "col_pct", "bar": "bar", "clustered_bar": "bar", "stacked_bar": "bar_stacked",
+    "percent_bar": "bar_pct", "line": "line", "line_markers": "line_markers", "line_with_markers": "line_markers",
+    "pie": "pie", "doughnut": "doughnut", "area": "area", "stacked_area": "area_stacked",
+    "percent_area": "area_pct", "scatter": "scatter", "scatter_lines": "scatter_lines",
+    "scatter_smooth": "scatter_smooth", "combo": "combo", "combo_secondary": "combo_sec",
+}
 
 _NAMED = {"red": "#FF0000", "green": "#00B050", "blue": "#0070C0", "yellow": "#FFFF00", "orange": "#FFC000",
           "purple": "#7030A0", "black": "#000000", "white": "#FFFFFF", "gray": "#808080", "grey": "#808080",

@@ -217,9 +217,8 @@ KEYTIPS = [
     # ---------------- Insert
     ("NV", "PivotTable", lambda w: w.insert_pivot(), ""),
     ("NT", "Table", None, "Insert Table: same as Format as Table (banded rows, filters, total row, structured references)."),
-    ("NC", "Charts", None,
-     "Insert a chart (column, bar, line, pie, scatter, area...) from the selected data, with chart "
-     "titles, axes, legend and styling. Ekxel also can't keep charts when re-saving Excel files."),
+    ("NC", "Charts", lambda w: w.chart_layer.insert_dialog(),
+     "Insert a chart (column, bar, line, pie, scatter, area...) from the selected data."),
     ("NI", "Hyperlink", None, "Insert Link (Ctrl+K): make a cell a clickable link to a web page, file or another cell."),
     ("NP", "Pictures", None, "Insert Pictures: place an image on the sheet."),
     ("NSH", "Shapes", None, "Insert Shapes: draw rectangles, arrows, callouts and other shapes."),

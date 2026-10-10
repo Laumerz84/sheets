@@ -110,6 +110,7 @@ class Sheet:
         self.xl_dv = []           # [[openpyxl DataValidation, [rects]]]
         self.xl_styles = {}       # key -> (Style it converted to, original StyleArray)
         self.controls = []        # form controls (sliders/spinners), see ui/controls.py
+        self.charts = []          # charts floating over the cells (dicts), see charts.py
         self.pivots = []          # PivotTables drawn on this sheet (dicts, see pivot.py)
         self.show_grid = True
         self.zoom = 1.0
@@ -376,6 +377,12 @@ class Sheet:
             if other.pivots and (other is self or any(p["source"] == self.name for p in other.pivots)):
                 other.pivots = [x for x in (remapped(p, self.name, remap_rect, other is self)
                                             for p in other.pivots) if x]
+        # charts: their cell references (on any sheet) and, on this sheet, where they sit
+        from . import charts as _charts
+        for other in self.wb.sheets:
+            if other.charts:
+                other.charts = [_charts.remap(c, self.name, remap_rect, other is self, axis, at, count, other.name)
+                                for c in other.charts]
         self._rebuild_fcols()
         self.recompute_extent()
 
@@ -479,6 +486,10 @@ class Workbook:
         for s in self.sheets:  # PivotTables reading from the renamed sheet
             if any(p["source"] == old for p in s.pivots):
                 s.pivots = [dict(p, source=new) if p["source"] == old else p for p in s.pivots]
+        from . import charts as _charts
+        for s in self.sheets:  # charts whose data is on the renamed sheet
+            if s.charts:
+                s.charts = [_charts.rename_sheet(c, old, new) for c in s.charts]
         for name, text in list(self.names.items()):
             self.names[name] = rename_sheet("=" + text, old, new)[1:]
         self.rebuild_dependencies()
@@ -716,6 +727,7 @@ class Workbook:
             "xl_dv": [(dv, list(rects)) for dv, rects in sh.xl_dv],
             "cond_formats": [(rule, list(rule.rects)) for rule in sh.cond_formats],
             "controls": list(sh.controls),
+            "charts": list(sh.charts),
             "pivots": list(sh.pivots),
         }
 
@@ -730,7 +742,7 @@ class Workbook:
                 snap["full"][sh] = self.snapshot_sheet(sh)
             else:
                 snap["ftext"][sh] = ({k: (f.text, f.fallback) for k, f in sh.formulas.items()}, sh.name,
-                                     list(sh.pivots))  # a pivot elsewhere may read from a changed sheet
+                                     list(sh.pivots), list(sh.charts))  # a pivot / chart elsewhere may read from a changed sheet
         return snap
 
     def restore(self, snap):
@@ -760,6 +772,7 @@ class Workbook:
                 rule._asts = {}
             sh.cond_formats = [rule for rule, _ in d["cond_formats"]]
             sh.controls = list(d.get("controls", []))
+            sh.charts = list(d.get("charts", []))
             sh.pivots = list(d.get("pivots", []))
             sh.recompute_extent()
         for sh, (ft, name, *rest) in snap["ftext"].items():
@@ -767,6 +780,8 @@ class Workbook:
             sh.name = name
             if rest:
                 sh.pivots = list(rest[0])
+            if len(rest) > 1:
+                sh.charts = list(rest[1])
         self.active = min(snap["active"], len(self.sheets) - 1)
         self.names = dict(snap.get("names", self.names))
         self._changed = []

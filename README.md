@@ -38,7 +38,9 @@ Only one copy runs at a time: opening another file hands it to the running app (
 | `.csv` / `.tsv` / `.txt` | auto-detects delimiter and encoding; keeps leading zeros and long IDs as text | yes, same delimiter/encoding as opened |
 | HTML tables named `.xls` | yes (common bank/web export) | saves as `.xlsx` |
 
-Charts and pictures in xlsx files can't be kept; Sheets warns before saving over such a file.
+Charts made in Ekxel are saved as real Excel charts (and restored when you reopen the file in Ekxel, see
+Charts below). Charts and pictures that came from another program can't be shown or edited, and Ekxel may
+simplify or drop them when it re-saves the file, so it warns before saving over such a file.
 
 ### 100 million rows
 
@@ -113,6 +115,36 @@ Filters, Columns, Rows and Values (the panel has a field search box and Defer La
 Refresh in the panel or Data > Refresh All (Ctrl+Alt+F5) after the source changes. The result is ordinary
 cells, so Excel shows the numbers; the pivot's setup is kept in Ekxel's hidden sheet so Ekxel can
 refresh and change it after reopening (Excel sees a plain table, not an interactive PivotTable).
+
+Charts (Insert > Chart, Alt N C; Alt+F1 = a clustered column chart of the selection right away, F11 = a chart on a
+new sheet): the gallery shows every type drawn with your own data - Clustered / Stacked / 100% Stacked Column and
+Bar, Line (with or without markers), Pie, Doughnut, Area / Stacked / 100% Stacked Area, Scatter (markers, straight
+or smooth lines) and Combo (columns + lines, optionally on a secondary axis, with a type per series). The data is
+the selection or the table around the cursor, with Excel's rules: a header row gives the series names, a first
+column of text (or dates, or years) gives the category labels, more columns than rows puts the series in rows.
+- The chart floats over the cells and is linked to them: edit a number, undo, insert or delete rows, rename a
+  sheet, and the chart follows. Click it to select; drag to move, drag a handle to resize (it moves and sizes
+  with its cells), Delete removes it, Ctrl+C / X / V / D copy, cut, paste and duplicate (a picture goes to the
+  clipboard too), arrow keys nudge it. Right-click: Change Chart Type, Select Data (data range, Switch
+  Row/Column, add / edit / remove / reorder series, category labels), Move Chart (another sheet or a new
+  one), Add Chart Element, Chart Style, Bring to Front / Send to Back, Format. Hover a bar or point for its value.
+- The green "+" and brush buttons next to a selected chart (and the right-click menu) add chart elements: chart
+  title, axis titles, data labels, gridlines, legend position; and change the style (five looks) and colors (four
+  colorful and four monochromatic palettes).
+- Double-click an element (or press Enter on the chart) for the Format Chart pane: chart area (fill, border,
+  gap width, doughnut hole), title, plot area, legend, axes (title, minimum / maximum / major unit, log scale,
+  number format, categories in reverse order) and each series (name, color, data labels, smoothing,
+  column / line / area and secondary axis in a combo). Every change is one undo step.
+- Hidden rows and columns are left out of a chart (so filters drive it), like Excel. In big-file mode a range
+  with millions of rows is sampled down to about 2,000 points with pyarrow (a note on the chart says so); a pie
+  or doughnut with more than 120 slices is refused with a message.
+- Saving .xlsx writes each chart as an Excel chart (same type, data links, titles, axes, legend, colors,
+  position), and keeps Ekxel's full setup in the hidden sheet so reopening in Ekxel restores it exactly.
+  Not carried over to Excel: chart styles (Excel gets the colors), fonts other than Calibri-ish grey text, and
+  anything Ekxel can't draw. Changes made to an Ekxel chart inside Excel are not read back by Ekxel (it restores
+  its own copy). Not in Ekxel: 3-D, radar, stock, surface, bubble, histogram, waterfall and map charts,
+  trendlines, error bars, sparklines, PivotCharts, slicers, individual point formatting, text boxes inside charts.
+- Claude can add charts too (the `add_chart` tool: type, range, title, axis titles, legend, where it goes).
 
 Keyboard shortcuts follow Excel; Help → Keyboard Shortcuts (F1) lists them.
 
