@@ -2,7 +2,7 @@
 
 Excel-style spreadsheet (PySide6). Engine in `sheets/`, UI in `sheets/ui/` (custom grid in `grid.py`),
 Claude panel in `sheets/ai/` (runs the user's Claude Code headless with an MCP bridge as its only tools).
-Rows go to 100,000,000 (`refs.MAX_ROWS`): never loop to MAX_ROWS, clamp to `sheet.max_row`. CSVs over
+Rows go to 1,000,000,000 (`refs.MAX_ROWS`): never loop to MAX_ROWS, clamp to `sheet.max_row`. CSVs over
 100 MB open as a `bigdata.BigSheet` (pyarrow columns + edits overlay; iterating `values` yields edits only,
 see the module docstring). Whole-file work there must be vectorised in `bigdata.py`; cell-by-cell code
 calls `ops._guard`/`bigdata.check_area`, which raises `TooBig` (shown as a message by `app.py`).

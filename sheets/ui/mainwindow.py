@@ -1605,14 +1605,55 @@ class MainWindow(QMainWindow):
         self._prep()
         self._push_states(ops.clear_all(self.sheet, self.sel_rects()), "Clear All")
 
+    def _big_fill(self, src, target):
+        """Fill down a big-file sheet: each column of the one-row source becomes a calculated
+        column computed for all target rows at once (bigcalc.py) - one undo step."""
+        from ..bigcalc import Unsupported, calc_state, set_state, state
+        sr1, sc1, sr2, sc2 = src
+        tr1, tc1, tr2, tc2 = target
+        if sr1 != sr2 or tr1 != sr1 or (tc1, tc2) != (sc1, sc2):
+            raise TooBig("In big-file mode a fill that long works down from a single row "
+                         "(select one row of formulas or values and fill it down).")
+        sh = self.sheet
+        old = state(sh)
+        try:
+            for c in range(sc1, sc2 + 1):
+                new = self._busy("Calculating the column...", lambda c=c: calc_state(sh, sr1, c, sr1 + 1, tr2))
+                if new is not None:
+                    set_state(sh, new)
+        except Unsupported as e:
+            set_state(sh, old)
+            QMessageBox.information(
+                self, APP_NAME, f"Ekxel can't fill this formula down a whole big file yet: it uses {e}.\n\n"
+                "Formulas that fill down millions of rows can use cells of the same row (like E2*F2), fixed "
+                "cells ($H$1), + - * / ^ &, comparisons and IF, IFERROR, AND, OR, NOT, ROUND(UP/DOWN), INT, "
+                "ABS, SQRT, MOD, SUM, AVERAGE, MIN, MAX, COUNT, LEFT, RIGHT, MID, LEN, UPPER, LOWER, TRIM, "
+                "CONCAT, VALUE, YEAR, MONTH, DAY and ISBLANK/ISNUMBER/ISTEXT/ISERROR.")
+            return
+        except BaseException:
+            set_state(sh, old)
+            raise
+        new = state(sh)
+        set_state(sh, old)
+        self.undo.push(MetaCommand(self, sh, {"big_calc": (old, new)}, "AutoFill"))
+        self.grid.set_selection([target], active=self.grid.sel.active)
+        self.statusBar().showMessage(f"Filled {tr2 - sr1:,} rows", 6000)
+
     def fill_dir(self, direction):
         self._prep()
+        if direction == "down" and is_big(self.sheet):
+            rects = self.sel_rects(visible=False)
+            if len(rects) == 1 and rects[0][2] - rects[0][0] > 50_000:
+                r1, c1, r2, c2 = rects[0]
+                return self._big_fill((r1, c1, r1, c2), rects[0])
         states = {}
         for rect in self.sel_rects(visible=False):
             states.update(ops.fill_down_states(self.sheet, rect, direction))
         self._push_states(states, "Fill Down" if direction == "down" else "Fill Right")
 
     def fill_drag(self, src, target):
+        if is_big(self.sheet) and target[2] - target[0] > 50_000 and target[2] > src[2]:
+            return self._big_fill(src, target)
         self._push_states(ops.fill_states(self.sheet, src, target), "AutoFill",
                           select=([target], self.grid.sel.active))
 

@@ -59,6 +59,10 @@ def edit_text_for(sheet, r, c):
     f = sheet.formulas.get(k)
     if f is not None:
         return f.text
+    if _big(sheet):
+        t = sheet.formula_text(r, c)
+        if t is not None:
+            return t
     v = sheet.values.get(k)
     return edit_text(v, sheet.styles.get(k, DEFAULT_STYLE).numfmt)
 

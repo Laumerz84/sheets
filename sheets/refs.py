@@ -1,7 +1,7 @@
 """Cell addressing helpers: A1 notation <-> (row, col), all 0-based internally."""
 import re
 
-MAX_ROWS = 100_000_000  # Excel stops at 1,048,576; big CSVs need more
+MAX_ROWS = 1_000_000_000  # Excel stops at 1,048,576; big CSVs (100M+ rows) need more
 XLSX_MAX_ROWS = 1_048_576
 MAX_COLS = 16_384
 _COL_BITS = 14  # 2**14 == MAX_COLS

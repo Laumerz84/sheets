@@ -42,7 +42,7 @@ Charts and pictures in xlsx files can't be kept; Sheets warns before saving over
 
 ### 100 million rows
 
-Sheets have 100,000,000 rows (Excel: 1,048,576). Excel files still hold at most 1,048,576 rows, so a
+Sheets have 1,000,000,000 rows (Excel: 1,048,576). Excel files still hold at most 1,048,576 rows, so a
 sheet with more saves as CSV only.
 
 **Big-file mode.** CSV/TSV files over 100 MB open in big-file mode (`sheets/bigdata.py`): the file is kept
@@ -59,6 +59,12 @@ whole file:
 - Sort (stable, numbers before text, blanks last), AutoFilter (value lists for columns with up to 10,000
   different values, condition filters for any column; the row headers show the file's row numbers in blue)
 - Find (Ctrl+F) and Replace All
+- filling a formula or value down millions of rows (double-click the fill handle, drag it, or Ctrl+D):
+  the column becomes a calculated column, stored once and computed for every row at once
+  (`sheets/bigcalc.py`), like an Excel Table column. It can use cells of the same row (`=E2*F2`), fixed
+  cells (`$J$1`), + - * / ^ & %, comparisons and IF, IFERROR, AND, OR, NOT, ROUND/ROUNDUP/ROUNDDOWN, INT,
+  ABS, SQRT, MOD, SUM, AVERAGE, MIN, MAX, COUNT, LEFT, RIGHT, MID, LEN, UPPER, LOWER, TRIM, CONCAT, VALUE,
+  YEAR, MONTH, DAY, ISBLANK/ISNUMBER/ISTEXT/ISERROR. Editing an input cell recomputes that row.
 - Save / Save As CSV or TSV (written in the current sort order, all rows including filtered-out ones)
 - undo for edits, sort, filter and Replace All
 

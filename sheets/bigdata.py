@@ -218,6 +218,8 @@ def load_big_csv(path, progress=None):
     if "e" in result:
         raise result["e"]
     table, skipped = result["v"]
+    if table.num_rows > MAX_ROWS:
+        raise MemoryError(f"This file has {table.num_rows:,} rows; Ekxel sheets hold at most {MAX_ROWS:,}.")
 
     wb = Workbook()
     name = os.path.splitext(os.path.basename(path))[0][:31] or "Sheet1"
@@ -259,6 +261,10 @@ class BigData:
         self._rt = {}       # round-trip cache for field conversion
         self._fmt_styles = {}
         self.lock = threading.RLock()
+        self.sheet = None       # the BigSheet showing this data
+        self.calc_vals = {}     # col -> (kind, num, err) arrays of a calculated column (bigcalc.py)
+        self.calc_defs = {}     # col -> {"text", "anchor", "inputs"}
+        self.calc_auto = set()  # edit keys bigcalc.recompute_row filled in (not typed by the user)
 
     # ------------------------------------------------------------ rows
     @property
@@ -318,6 +324,11 @@ class BigData:
         """(value, numfmt) the file has at data row d, column c, or None when empty."""
         if d >= self.N or c >= self.ncols:
             return None
+        if self.calc_vals and c in self.calc_vals:
+            from .bigcalc import NOT_CALC, cell
+            v = cell(self, d, c)
+            if v is not NOT_CALC:
+                return None if v is None else (v, None)
         row = self._rows.get(d)
         if row is None:
             self._fetch(d, r)
@@ -369,6 +380,15 @@ class BigData:
         self.edits[(d << 14) | c] = v
         if self._inv is not None and d < self.N:
             self._inv[d] = r
+        self.after_edit(d, c)
+
+    def after_edit(self, d, c):
+        """A cell the user changed: it's no longer an auto-computed one, and calculated columns
+        reading it get that row recomputed."""
+        self.calc_auto.discard((d << 14) | c)
+        if self.calc_defs and self.sheet is not None:
+            from .bigcalc import recompute_row
+            recompute_row(self.sheet, d, c)
 
     # ------------------------------------------------------------ numbers
     def numeric(self, c):
@@ -459,6 +479,7 @@ class BigValues:
             big.set_edit(r, c, CLEARED)
         else:
             big.edits.pop((d << 14) | c, None)
+            big.after_edit(d, c)
         if v is _MISSING:
             if default is _MISSING:
                 raise KeyError(k)
@@ -589,6 +610,7 @@ class BigStyles:
 class BigSheet(Sheet):
     def __init__(self, wb, name, big):
         self.big = big
+        big.sheet = self
         self._values = BigValues(big)
         self._styles = BigStyles(big)
         super().__init__(wb, name)
@@ -630,6 +652,31 @@ class BigSheet(Sheet):
         self.recompute_extent()
         if any(s.formulas for s in self.wb.sheets):
             self.wb.recalc(full=True)  # formulas see the rows as now shown
+
+    @property
+    def big_calc(self):
+        from .bigcalc import state
+        return state(self)
+
+    @big_calc.setter
+    def big_calc(self, st):
+        from .bigcalc import set_state
+        set_state(self, st)
+
+    def formula_text(self, r, c):
+        f = self.formulas.get((r << 14) | c)
+        if f is not None:
+            return f.text
+        info = self.big.calc_defs.get(c)
+        if info and info["text"]:
+            d = self.big.drow(r)
+            if ((d << 14) | c) in self.big.edits:
+                return None
+            from .bigcalc import NOT_CALC, cell
+            if cell(self.big, d, c) is not NOT_CALC:
+                from .formula import shift_formula
+                return shift_formula(info["text"], r - info["anchor"], 0)
+        return None
 
     @property
     def big_cols(self):
