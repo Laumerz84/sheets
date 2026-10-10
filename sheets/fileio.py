@@ -24,6 +24,9 @@ def open_file(path, progress=None):
         return load_xlsx(path, progress)
     if ext == ".xls":
         return _open_xls(path, progress)
+    from .bigdata import load_big_csv, wants_big
+    if wants_big(path):
+        return load_big_csv(path, progress)
     from .io_csv import load_csv
     return load_csv(path, progress)
 
@@ -53,9 +56,15 @@ def _open_xls(path, progress):
     return wb
 
 
-def save_file(wb, path, sheet=None):
+def save_file(wb, path, sheet=None, progress=None):
     ext = os.path.splitext(path)[1].lower()
     if ext in (".xlsx", ".xlsm"):
+        from .refs import XLSX_MAX_ROWS
+        for sh in wb.sheets:
+            if sh.used_extent(include_styles=False)[0] + 1 > XLSX_MAX_ROWS:
+                raise ValueError(f"'{sh.name}' has {sh.used_extent(include_styles=False)[0] + 1:,} rows. "
+                                 f"Excel files hold at most {XLSX_MAX_ROWS:,} rows per sheet; "
+                                 "save it as CSV instead.")
         from .io_xlsx import save_xlsx
         save_xlsx(wb, path)
         wb.file_format = "xlsx"
@@ -66,7 +75,15 @@ def save_file(wb, path, sheet=None):
         if wb.file_format != "csv":
             opts = {"encoding": "utf-8", "bom": True, "newline": "\r\n",
                     "delimiter": "\t" if ext in (".tsv", ".txt", ".tab") else ","}
-        save_csv(wb, sh, path, opts)
+        if getattr(sh, "big", None) is not None:
+            from .bigdata import save_big_csv
+            o = dict(wb.csv_options or {})
+            o.update(opts or {})
+            if ext in (".tsv", ".tab"):
+                o["delimiter"] = "\t"
+            save_big_csv(sh, path, o, progress)
+        else:
+            save_csv(wb, sh, path, opts)
         if wb.file_format != "csv" or wb.csv_options is None:
             wb.csv_options = opts
         wb.file_format = "csv"

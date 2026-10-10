@@ -292,8 +292,20 @@ def _serial(d):
 
 # ================================================================ math
 
+def _big_aggregate(name, args):
+    """Whole-column SUM/COUNT/... over a big-file sheet, computed column-wise (see bigdata.py)."""
+    if not any(isinstance(a, RangeRef) and getattr(a.sheet, "big", None) is not None for a in args):
+        return None
+    from . import bigdata
+    r = bigdata.aggregate(name, args)
+    return None if r is bigdata._MISSING else r
+
+
 @fn("SUM", sig="number1, [number2], ...")
 def _sum(ctx, *args):
+    fast = _big_aggregate("SUM", args)
+    if fast is not None:
+        return fast
     return math.fsum(nums(args))
 
 
@@ -309,6 +321,9 @@ def _product(ctx, *args):
 
 @fn("AVERAGE", sig="number1, [number2], ...")
 def _average(ctx, *args):
+    fast = _big_aggregate("AVERAGE", args)
+    if fast is not None:
+        return fast
     xs = _num_list(args)
     if not xs:
         raise errors.DIV0
@@ -325,12 +340,18 @@ def _averagea(ctx, *args):
 
 @fn("MIN", sig="number1, [number2], ...")
 def _min(ctx, *args):
+    fast = _big_aggregate("MIN", args)
+    if fast is not None:
+        return fast
     xs = _num_list(args)
     return min(xs) if xs else 0.0
 
 
 @fn("MAX", sig="number1, [number2], ...")
 def _max(ctx, *args):
+    fast = _big_aggregate("MAX", args)
+    if fast is not None:
+        return fast
     xs = _num_list(args)
     return max(xs) if xs else 0.0
 
@@ -349,6 +370,9 @@ def _maxa(ctx, *args):
 
 @fn("COUNT", kind="safe", sig="value1, [value2], ...")
 def _count(ctx, *args):
+    fast = _big_aggregate("COUNT", args)
+    if fast is not None:
+        return fast
     n = 0
     for a in args:
         if isinstance(a, RangeRef) or isinstance(a, list):
@@ -366,6 +390,9 @@ def _count(ctx, *args):
 
 @fn("COUNTA", kind="safe", sig="value1, [value2], ...")
 def _counta(ctx, *args):
+    fast = _big_aggregate("COUNTA", args)
+    if fast is not None:
+        return fast
     n = 0
     for a in args:
         if isinstance(a, RangeRef):
@@ -1942,5 +1969,16 @@ def _irr(ctx, values, guess=MISSING):
         r = nr
     raise errors.NUM
 
+
+@fn("GETPIVOTDATA", sig="data_field, pivot_table, [field1, item1], ...", minargs=2)
+def _getpivotdata(ctx, data_field, table, *pairs):
+    if not isinstance(table, RangeRef):
+        raise errors.REF
+    from .pivot import getpivotdata
+    vals = [scalar(a) for a in pairs]
+    return getpivotdata(table.sheet, table.r1, table.c1, scalar(data_field), vals)
+
+
+VOLATILE.add("GETPIVOTDATA")   # reads what the pivot shows, which changes when it's refreshed
 
 ALL_NAMES = sorted(n for n in FUNCS if not n.startswith("_"))

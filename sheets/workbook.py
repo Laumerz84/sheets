@@ -260,6 +260,10 @@ class Sheet:
     def row_height(self, r):
         return self.row_heights.get(r, DEFAULT_ROW_HEIGHT)
 
+    def row_label(self, r):
+        """Number shown in the row header (big sheets show the file's row when sorted/filtered)."""
+        return r + 1
+
     def merge_at(self, r, c):
         for m in self.merges:
             if m[0] <= r <= m[2] and m[1] <= c <= m[3]:
@@ -693,7 +697,7 @@ class Workbook:
 
     def snapshot_sheet(self, sh):
         return {
-            "values": dict(sh.values),
+            "values": sh.values.snapshot() if hasattr(sh.values, "snapshot") else dict(sh.values),
             "formulas": {k: (f.text, f.fallback) for k, f in sh.formulas.items()},
             "styles": dict(sh.styles),
             "col_widths": dict(sh.col_widths),
@@ -734,7 +738,7 @@ class Workbook:
         for sh in self.sheets:
             sh.wb = self
         for sh, d in snap["full"].items():
-            sh.values = dict(d["values"])
+            sh.values = dict(d["values"]) if isinstance(d["values"], dict) else d["values"]
             sh.formulas = {k: Formula(t, fb) for k, (t, fb) in d["formulas"].items()}
             sh.styles = dict(d["styles"])
             sh.col_widths = dict(d["col_widths"])

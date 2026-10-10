@@ -95,15 +95,10 @@ def load_csv(path, progress=None):
             if field[0] == "=" and len(field) > 1:
                 formulas.append((base | c, field))
                 continue
-            v, fmt = parse_input(field, typed=False)
-            if v is None:
+            conv = convert_field(field, rt_cache)
+            if conv is None:
                 continue
-            if v.__class__ is not str and not (
-                    (fmt is None and v.__class__ is float and field.isdigit() and (field[0] != "0" or field == "0"))
-                    or rt_cache.get((v, fmt, field)) or _remember(rt_cache, v, fmt, field)):
-                fmt = _sci_format(field) if fmt is None else None
-                if fmt is None or format_value(v, fmt)[0] != field:
-                    v, fmt = field, None  # keep exactly what the file says
+            v, fmt = conv
             values[base | c] = v
             if fmt:
                 st = style_cache.get(fmt)
@@ -119,6 +114,21 @@ def load_csv(path, progress=None):
     wb.rebuild_dependencies()
     wb.recalc(full=True)
     return wb
+
+
+def convert_field(field, rt_cache):
+    """A non-empty CSV field -> (value, number format or None), or None when it holds nothing.
+    Numbers/dates only when saving them again gives back the same text."""
+    v, fmt = parse_input(field, typed=False)
+    if v is None:
+        return None
+    if v.__class__ is not str and not (
+            (fmt is None and v.__class__ is float and field.isdigit() and (field[0] != "0" or field == "0"))
+            or rt_cache.get((v, fmt, field)) or _remember(rt_cache, v, fmt, field)):
+        fmt = _sci_format(field) if fmt is None else None
+        if fmt is None or format_value(v, fmt)[0] != field:
+            v, fmt = field, None  # keep exactly what the file says
+    return v, fmt
 
 
 def _round_trips(v, fmt, field):

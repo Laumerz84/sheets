@@ -392,6 +392,8 @@ class Grid(QWidget):
     def _update_row_header_width(self):
         last = self.top + self.visible_row_count() + 1
         digits = len(str(min(MAX_ROWS, last + 1)))
+        if self.sheet is not None and getattr(self.sheet, "big", None) is not None:
+            digits = max(digits, len(str(self.sheet.big.N + 1)))
         fm = QFontMetrics(self.header_font)
         rw = max(int(26 * min(self.zoom, 1.5)), fm.horizontalAdvance("9" * max(digits, 3)) + 12)
         if rw != self.rw:
@@ -1087,7 +1089,10 @@ class Grid(QWidget):
                 else:
                     p.setPen(S.HEADER_TEXT)
                 if h >= 6:
-                    p.drawText(rect.adjusted(0, 0, -3, 0), Qt.AlignCenter, str(r + 1))
+                    label = self.sheet.row_label(r)
+                    if label != r + 1:  # sorted/filtered big file: the file's row number, in blue like Excel
+                        p.setPen(QColor("#1F5FBF"))
+                    p.drawText(rect.adjusted(0, 0, -3, 0), Qt.AlignCenter, str(label))
                 if not S.HEADER_BEVEL:
                     p.setPen(S.HEADER_LINE)
                     p.drawLine(2, y + h - 1, rw - 1, y + h - 1)
@@ -1667,7 +1672,10 @@ class Grid(QWidget):
         if not sh.has_content(r2, neighbour) and not sh.has_content(r2 + 1, neighbour):
             return
         last = r2
-        while last + 1 < MAX_ROWS and sh.has_content(last + 1, neighbour):
+        if getattr(sh, "big", None) is not None:
+            from .. import ops
+            last = ops.data_edge(sh, r2, neighbour, 1, 0, sh.max_row, neighbour)[0]                 if sh.has_content(r2 + 1, neighbour) else r2
+        while last + 1 < MAX_ROWS and sh.has_content(last + 1, neighbour) and getattr(sh, "big", None) is None:
             last += 1
         if last > r2:
             target = (r1, c1, last, c2)

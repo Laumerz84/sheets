@@ -93,6 +93,21 @@ class _FileOpenEvents(QObject):
         return False
 
 
+def _install_error_hook():
+    """Big-file mode refuses some cell-by-cell work by raising bigdata.TooBig: show its message."""
+    prev = sys.excepthook
+
+    def hook(etype, value, tb):
+        if etype.__name__ == "TooBig":
+            from PySide6.QtWidgets import QMessageBox
+            while QApplication.overrideCursor() is not None:
+                QApplication.restoreOverrideCursor()
+            QMessageBox.information(QApplication.activeWindow(), "Ekxel", str(value))
+            return
+        prev(etype, value, tb)
+    sys.excepthook = hook
+
+
 def quit_all():
     """Close every window the normal way, so unsaved work still gets the Save? prompt."""
     from .ui.mainwindow import WINDOWS
@@ -146,6 +161,7 @@ def main(argv=None):
     from .ui.style import apply_palette
     apply_palette(app)
     app.setWindowIcon(app_icon())
+    _install_error_hook()
     global SERVER_NAME
     server = _start_server(open_paths)
     if not server.isListening():

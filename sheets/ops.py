@@ -12,6 +12,17 @@ from .values import is_num, sort_key
 from .workbook import DEFAULT_STYLE, intern_style
 
 
+def _big(sheet):
+    return getattr(sheet, "big", None) is not None
+
+
+def _guard(sheet, rect, what="That"):
+    """Big-file sheets: refuse cell-by-cell work on more cells than bigdata.CELL_BUDGET."""
+    if _big(sheet):
+        from .bigdata import check_area
+        check_area(sheet, rect, what)
+
+
 # ---------------------------------------------------------------- typed input
 
 def input_state(sheet, r, c, text):
@@ -75,7 +86,8 @@ def rect_keys(sheet, rect, include_styles=True):
     r1, c1, r2, c2 = rect
     area = (r2 - r1 + 1) * (c2 - c1 + 1)
     sources = [sheet.values, sheet.formulas] + ([sheet.styles] if include_styles else [])
-    if area <= 200000:
+    _guard(sheet, rect)
+    if area <= 200000 or _big(sheet):
         out = []
         for r in range(r1, r2 + 1):
             base = r << 14
@@ -128,6 +140,7 @@ def restyle(sheet, rects, fn):
             # whole columns/rows: only touch used cells
             r2 = min(r2, max(sheet.used_extent()[0], r1))
             c2 = min(c2, max(sheet.used_extent()[1], c1))
+        _guard(sheet, (r1, c1, r2, c2), "Formatting that")
         for r in range(r1, r2 + 1):
             base = r << 14
             for c in range(c1, c2 + 1):
@@ -142,6 +155,7 @@ def restyle(sheet, rects, fn):
 def borders_states(sheet, rect, mode, side=("thin", "#000000")):
     """mode: all | outline | inside | bottom | top | left | right | none | thick_outline."""
     r1, c1, r2, c2 = rect
+    _guard(sheet, rect, "Bordering that")
     states = {}
     if mode == "thick_outline":
         side, mode = ("medium", "#000000"), "outline"
@@ -212,6 +226,7 @@ class Clip:
 def copy_rect(sheet, rect, rows=None):
     """rows: explicit list of sheet rows to include (skips filtered rows)."""
     r1, c1, r2, c2 = rect
+    _guard(sheet, rect, "Copying that")
     rows = list(rows) if rows is not None else list(range(r1, r2 + 1))
     cells = []
     for r in rows:
@@ -293,6 +308,7 @@ def parse_clipboard_text(text):
 
 def paste_states(sheet, clip, dest_rect, values_only=False, formats_only=False, transpose=False):
     """States for pasting clip at dest (tiles if dest is a multiple of the clip size)."""
+    _guard(sheet, dest_rect, "Pasting there")
     cells = clip.cells
     if transpose:
         cells = [list(r) for r in zip(*cells)]
@@ -428,6 +444,7 @@ def fill_states(sheet, src_rect, dst_rect, series=True):
     """Fill dst_rect (which extends src_rect in one direction) from src_rect."""
     sr1, sc1, sr2, sc2 = src_rect
     dr1, dc1, dr2, dc2 = dst_rect
+    _guard(sheet, dst_rect, "Filling that")
     states = {}
     if dr2 > sr2 or dr1 < sr1:
         vertical = True
@@ -469,6 +486,7 @@ def fill_states(sheet, src_rect, dst_rect, series=True):
 def fill_down_states(sheet, rect, direction="down"):
     """Ctrl+D / Ctrl+R: copy the first row/column of rect into the rest."""
     r1, c1, r2, c2 = rect
+    _guard(sheet, rect, "Filling that")
     states = {}
     if direction == "down":
         if r1 == r2:
@@ -517,6 +535,7 @@ def sort_states(sheet, rect, keys, header=False, case_sensitive=False, skip_rows
     """keys: [(col_index_absolute, ascending)].  Rows move with formulas shifted.
     Blanks always sort last; ties keep their original order."""
     r1, c1, r2, c2 = rect
+    _guard(sheet, rect, "Sorting that range")
     if header:
         r1 += 1
     rows = [r for r in range(r1, r2 + 1) if not skip_rows or r not in skip_rows]
@@ -567,6 +586,11 @@ def sort_states(sheet, rect, keys, header=False, case_sensitive=False, skip_rows
 
 def current_region(sheet, r, c):
     """The contiguous block of non-empty cells around (r, c), like Ctrl+A / Ctrl+*."""
+    if _big(sheet):
+        from .bigdata import current_region as big_region
+        got = big_region(sheet, r, c)
+        if got is not None:
+            return got
     has = sheet.has_content
     r1 = r2 = r
     c1 = c2 = c
@@ -616,6 +640,11 @@ def data_edge(sheet, r, c, dr, dc, limit_r, limit_c):
     nr, nc = r + dr, c + dc
     if not ok(nr, nc):
         return r, c
+    if dr and _big(sheet):
+        from .bigdata import data_edge as big_edge
+        got = big_edge(sheet, r, c, dr, limit_r)
+        if got is not None:
+            return got
     if has(r, c) and has(nr, nc):
         while ok(nr + dr, nc + dc) and has(nr + dr, nc + dc):
             nr, nc = nr + dr, nc + dc
@@ -662,8 +691,8 @@ def autosum_range(sheet, r, c):
 
 # ---------------------------------------------------------------- find / replace
 
-def find_matches(sheet, needle, match_case=False, whole=False, in_formulas=True, rect=None):
-    """Sorted list of (r, c) whose text matches."""
+def find_matches(sheet, needle, match_case=False, whole=False, in_formulas=True, rect=None, edits_only=False):
+    """Sorted list of (r, c) whose text matches (big sheets: edits_only skips the file's data)."""
     if needle == "":
         return []
     if any(ch in needle for ch in "*?"):
@@ -676,7 +705,11 @@ def find_matches(sheet, needle, match_case=False, whole=False, in_formulas=True,
         else:
             test = lambda s: n in (s if match_case else s.lower())
     out = []
-    keys = set(sheet.values) | set(sheet.formulas)
+    if _big(sheet) and not edits_only:
+        from .bigdata import find_rows
+        out = [h for h in find_rows(sheet, needle, match_case, whole)
+               if not rect or (rect[0] <= h[0] <= rect[2] and rect[1] <= h[1] <= rect[3])]
+    keys = set(sheet.values) | set(sheet.formulas)  # big sheets: only edited cells
     for k in keys:
         r, c = k >> 14, k & 0x3FFF
         if rect and not (rect[0] <= r <= rect[2] and rect[1] <= c <= rect[3]):
@@ -722,6 +755,7 @@ def replace_states(sheet, cells, needle, repl, match_case=False, whole=False):
 
 def filter_values_for(sheet, col, r1, r2):
     """Display strings present in a filter column (sorted, blanks flagged)."""
+    _guard(sheet, (r1, col, r2, col), "That filter column")
     seen = {}
     blanks = False
     for r in range(r1, r2 + 1):
@@ -780,6 +814,8 @@ def _cond(op, arg, v, t):
 def filter_extent(sheet):
     """Extend the autofilter range down to the last used row in its columns."""
     r1, c1, r2, c2 = sheet.autofilter
+    if _big(sheet):
+        return (r1, c1, max(r2, sheet.max_row), c2)
     last = r2
     has = sheet.has_content
     # grow over rows added directly below (contiguous data only, like Excel)
@@ -789,8 +825,8 @@ def filter_extent(sheet):
 
 
 def compute_filter_hidden(sheet):
-    if not sheet.autofilter or not sheet.filters:
-        return set()
+    if not sheet.autofilter or not sheet.filters or _big(sheet):
+        return set()  # big sheets filter through their row view instead (bigdata.filtered_view)
     r1, c1, r2, c2 = filter_extent(sheet)
     sheet.autofilter = (r1, c1, r2, c2)
     hidden = set()

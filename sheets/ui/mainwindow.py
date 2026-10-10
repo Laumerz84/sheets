@@ -17,6 +17,7 @@ from PySide6.QtWidgets import (QApplication, QComboBox, QDialog,
                                QPlainTextEdit, QStyle)
 
 from .. import ops
+from ..bigdata import TooBig, is_big
 from ..osinfo import IS_WIN, UI_FONT, default_spreadsheet_folder, settings_dir, ui_pt
 from ..errors import XLError
 from ..fileio import (OPEN_FILTER, READABLE, SAVE_FILTERS, WRITABLE,
@@ -1118,6 +1119,8 @@ class MainWindow(QMainWindow):
         if total <= 1:
             self.stats_lbl.setText("")
             return
+        if is_big(sh) and total > 20000:
+            return self._big_stats(rects)
         count = 0
         nums = 0
         s = 0.0
@@ -1252,7 +1255,7 @@ class MainWindow(QMainWindow):
         ar, ac = pv["anchor"]
         for (dr, dc), (v, st) in cells.items():
             states[key(ar + dr, ac + dc)] = (None if v in (None, "") else ("v", v), st)
-        return states, P.changed(pv, out=P.out_rect(pv, size)), None
+        return states, P.changed(pv, out=P.out_rect(pv, size), hot=list(getattr(cells, "hot", ()))), None
 
     def change_pivot(self, sheet, old, new, text):
         """Redraw a pivot with definition `new` (replacing `old`; None = a new pivot), as one undo step."""
@@ -1283,7 +1286,8 @@ class MainWindow(QMainWindow):
         self.undo.push(MetaCommand(self, sheet, {"pivots": (list(sheet.pivots), pivots)}, text, False))
         has_fields = new["rows"] or new["cols"] or new["values"] or new["filter_fields"]
         if has_fields and sheet is self.sheet:  # Excel autofits a pivot's columns on every update
-            self.autofit_cols(range(o[1], o[3] + 1))
+            from .pivot_ui import autofit_pivot  # autofit, plus room for indents and dropdown buttons
+            autofit_pivot(self, new)
         self.undo.endMacro()
         if sheet is self.sheet:
             self._sync_pivot_panel()
@@ -1898,6 +1902,9 @@ class MainWindow(QMainWindow):
     def insert_rows_cols(self, axis):
         self._prep()
         sh = self.sheet
+        if is_big(sh):
+            raise TooBig("Inserting rows or columns isn't available in big-file mode. "
+                         "Type in the empty rows below the data or the columns to its right instead.")
         r1, c1, r2, c2 = self.grid.sel.rects[-1]
         if axis == "row":
             at, n = r1, min(r2 - r1 + 1, 10000)
@@ -1918,6 +1925,9 @@ class MainWindow(QMainWindow):
     def delete_rows_cols(self, axis):
         self._prep()
         sh = self.sheet
+        if is_big(sh):
+            raise TooBig("Deleting rows or columns isn't available in big-file mode. "
+                         "Filter the rows you want to keep and copy them, or clear cells instead.")
         raw = sorted((r1, r2) if axis == "row" else (c1, c2) for r1, c1, r2, c2 in self.grid.sel.rects)
         # merge overlapping/adjacent spans so no row is deleted twice
         spans = []
@@ -2132,6 +2142,9 @@ class MainWindow(QMainWindow):
     def duplicate_sheet(self):
         self._prep()
         src = self.sheet
+        if is_big(src):
+            raise TooBig("A big-file sheet can't be duplicated (it would need another copy of the "
+                         "whole file in memory). Save it under a new name instead.")
         base = src.name[:27]
         n = 2
         while self.wb.get_sheet(f"{base} ({n})"):
@@ -2399,6 +2412,8 @@ class MainWindow(QMainWindow):
 
     def _do_sort(self, rect, keys, header, case=False):
         sh = self.sheet
+        if is_big(sh):
+            return self._big_sort(keys, header, case)
         states = ops.sort_states(sh, rect, keys, header, case)
         if not states:
             self.statusBar().showMessage("Already sorted", 2000)
@@ -2410,6 +2425,110 @@ class MainWindow(QMainWindow):
             self._push_meta({"filter_hidden": (set(sh.filter_hidden), hidden)}, "Sort")
         self.undo.endMacro()
 
+    # ================================================================ big-file mode
+    def _busy(self, label, fn, progress=False):
+        """Run fn on a worker thread behind a modal progress dialog (fn must not touch Qt).
+        With progress=True fn gets a callback taking 0..1. Returns fn's result."""
+        import threading
+        state = {"p": 0.0}
+        box = {}
+
+        def work():
+            try:
+                box["v"] = fn(lambda f: state.__setitem__("p", f)) if progress else fn()
+            except BaseException as e:  # noqa: BLE001 - re-raised below on the main thread
+                box["e"] = e
+        dlg = QProgressDialog(label, None, 0, 100 if progress else 0, self)
+        dlg.setWindowTitle(APP_NAME)
+        dlg.setWindowModality(Qt.WindowModal)
+        dlg.setMinimumDuration(300)
+        QApplication.setOverrideCursor(Qt.WaitCursor)
+        self.grid.setUpdatesEnabled(False)  # the worker may briefly switch the row view
+        th = threading.Thread(target=work, daemon=True)
+        th.start()
+        try:
+            while th.is_alive():
+                th.join(0.05)
+                if progress:
+                    dlg.setValue(int(state["p"] * 100))
+                QApplication.processEvents()
+        finally:
+            self.grid.setUpdatesEnabled(True)
+            QApplication.restoreOverrideCursor()
+            dlg.close()
+        if "e" in box:
+            raise box["e"]
+        return box.get("v")
+
+    def _big_sort(self, keys, header, case=False):
+        from ..bigdata import sorted_state
+        sh = self.sheet
+        old = sh.big_state
+        new = self._busy("Sorting...", lambda: sorted_state(sh, keys, header, case))
+        self._push_meta({"big_state": (old, new)}, "Sort")
+
+    def _big_filter(self, filters, text, autofilter=None):
+        """Show only rows passing `filters` (one undo step); autofilter=(old, new) to change it too."""
+        from ..bigdata import filtered_view
+        sh = self.sheet
+        old = sh.big_state
+        order = sh.big.order
+        view = self._busy("Filtering...", lambda: filtered_view(sh, order, filters)) if filters else order
+        changes = {"filters": (dict(sh.filters), dict(filters)), "big_state": (old, (order, view))}
+        if autofilter is not None:
+            changes["autofilter"] = autofilter
+        self._push_meta(changes, text)
+        r, c = self.grid.sel.active
+        if r > sh.max_row:
+            self.grid.set_active(max(0, sh.max_row), c)
+        n = sh.big.nview - 1
+        if filters:
+            self.statusBar().showMessage(f"{n:,} of {sh.big.N - 1:,} records found", 8000)
+
+    def _big_stats(self, rects):
+        """Status-bar Sum/Average/Count for a big selection, computed off the main thread."""
+        import threading
+        from ..bigdata import overrides, range_stats
+        sh = self.sheet
+        self._stats_gen = getattr(self, "_stats_gen", 0) + 1
+        gen = self._stats_gen
+        jobs = [(r, overrides(sh, *r)) for r in rects]
+        box = {}
+
+        def work():
+            try:
+                tot = {"count": 0, "nums": 0, "sum": 0.0}
+                for rect, over in jobs:
+                    st = range_stats(sh, *rect, over=over)
+                    for k in tot:
+                        tot[k] += st[k]
+                box["v"] = tot
+            except Exception as e:  # noqa: BLE001
+                box["e"] = e
+        th = threading.Thread(target=work, daemon=True)
+        th.start()
+        self.stats_lbl.setText("Calculating...")
+
+        def poll():
+            if gen != self._stats_gen or self.sheet is not sh:
+                return
+            if th.is_alive():
+                QTimer.singleShot(100, poll)
+                return
+            tot = box.get("v")
+            if not tot or (tot["count"] < 2 and tot["nums"] < 2):
+                self.stats_lbl.setText("")
+                return
+            show = lambda x: format_value(round(x, 10), "General")[0]
+            parts = []
+            if tot["nums"]:
+                parts.append(f"Average: {show(tot['sum'] / tot['nums'])}")
+            parts.append(f"Count: {tot['count']:,}")
+            if tot["nums"]:
+                parts.append(f"Sum: {show(tot['sum'])}")
+            self.stats_lbl.setText("    ".join(parts))
+        QTimer.singleShot(100, poll)
+
     def sort_dialog(self):
         self._prep()
         rect, header = self._sort_range()
@@ -2420,7 +2539,9 @@ class MainWindow(QMainWindow):
     def toggle_filter(self):
         self._prep()
         sh = self.sheet
-        if sh.autofilter:
+        if sh.autofilter and is_big(sh):
+            self._big_filter({}, "Remove Filter", autofilter=(sh.autofilter, None))
+        elif sh.autofilter:
             self._push_meta({"autofilter": (sh.autofilter, None), "filters": (dict(sh.filters), {}),
                              "filter_hidden": (set(sh.filter_hidden), set())}, "Remove Filter")
         else:
@@ -2441,20 +2562,25 @@ class MainWindow(QMainWindow):
         if not sh.autofilter:
             return
         r1, c1, r2, c2 = ops.filter_extent(sh)
-        # values offered: rows not hidden by *other* columns' filters
-        other = {k: v for k, v in sh.filters.items() if k != col}
-        rows = [r for r in range(r1 + 1, r2 + 1)
-                if not any(not ops.row_passes(sh, r, spec, oc) for oc, spec in other.items())]
-        seen = {}
-        blanks = False
-        for r in rows:
-            t = ops.display_text(sh, r, col)
-            if t == "":
-                blanks = True
-            elif t not in seen:
-                seen[t] = sh.value(r, col)
-        from ..values import sort_key
-        values = [t for t, _ in sorted(seen.items(), key=lambda kv: sort_key(kv[1]) if kv[1] is not None else (9,))]
+        if is_big(sh):
+            from ..bigdata import filter_values
+            filters = dict(sh.filters)
+            values, blanks = self._busy("Reading the column...", lambda: filter_values(sh, col, filters))
+        else:
+            # values offered: rows not hidden by *other* columns' filters
+            other = {k: v for k, v in sh.filters.items() if k != col}
+            rows = [r for r in range(r1 + 1, r2 + 1)
+                    if not any(not ops.row_passes(sh, r, spec, oc) for oc, spec in other.items())]
+            seen = {}
+            blanks = False
+            for r in rows:
+                t = ops.display_text(sh, r, col)
+                if t == "":
+                    blanks = True
+                elif t not in seen:
+                    seen[t] = sh.value(r, col)
+            from ..values import sort_key
+            values = [t for t, _ in sorted(seen.items(), key=lambda kv: sort_key(kv[1]) if kv[1] is not None else (9,))]
         title = str(sh.value(r1, col) or col_name(col))
         pop = FilterPopup(self, col, values, blanks, sh.filters.get(col), title)
         pop.applied.connect(self.apply_filter)
@@ -2476,6 +2602,8 @@ class MainWindow(QMainWindow):
             filters.pop(col, None)
         else:
             filters[col] = spec
+        if is_big(sh):
+            return self._big_filter(filters, "Filter")
         old = (sh.autofilter, dict(sh.filters), set(sh.filter_hidden))
         sh.filters = filters
         hidden = ops.compute_filter_hidden(sh)
@@ -2490,13 +2618,17 @@ class MainWindow(QMainWindow):
 
     def clear_filters(self):
         sh = self.sheet
-        if sh.filters:
+        if sh.filters and is_big(sh):
+            self._big_filter({}, "Clear Filters")
+        elif sh.filters:
             self._push_meta({"filters": (dict(sh.filters), {}), "filter_hidden": (set(sh.filter_hidden), set())},
                             "Clear Filters")
 
     def reapply_filters(self):
         sh = self.sheet
-        if sh.autofilter and sh.filters:
+        if sh.autofilter and sh.filters and is_big(sh):
+            self._big_filter(dict(sh.filters), "Reapply Filter")
+        elif sh.autofilter and sh.filters:
             hidden = ops.compute_filter_hidden(sh)
             self._push_meta({"filter_hidden": (set(sh.filter_hidden), hidden)}, "Reapply Filter")
 
@@ -2537,9 +2669,30 @@ class MainWindow(QMainWindow):
     def _matches(self, p, sheet):
         return ops.find_matches(sheet, p["needle"], p["case"], p["whole"], p["formulas"])
 
+    def _big_find(self, p, sh, start, limit):
+        from ..bigdata import find_rows
+        hits = self._busy("Searching...", lambda: find_rows(sh, p["needle"], p["case"], p["whole"], start, limit))
+        hits += ops.find_matches(sh, p["needle"], p["case"], p["whole"], p["formulas"], edits_only=True)
+        return sorted(set(hits))
+
     def find_next(self, p):
         if not p["needle"]:
             return
+        if not p["workbook"] and is_big(self.sheet):
+            # scan forward from the active cell and stop at the first block with a hit
+            sh = self.sheet
+            cur = self.grid.sel.active
+            ms = self._big_find(p, sh, cur[0], 5000)
+            nxt = next((m for m in ms if m > cur), None)
+            if nxt is None:
+                ms = self._big_find(p, sh, 0, 5000)
+                nxt = ms[0] if ms else None
+            if nxt is None:
+                self.find_dlg.status.setText("Ekxel couldn't find what you were looking for.")
+                return False
+            self.grid.set_active(*nxt)
+            self.find_dlg.status.setText(f"Found at {sh.name}!{addr(*nxt)}")
+            return True
         sheets = self.wb.sheets if p["workbook"] else [self.sheet]
         start_idx = sheets.index(self.sheet) if self.sheet in sheets else 0
         order = sheets[start_idx:] + sheets[:start_idx] + [sheets[start_idx]]
@@ -2564,7 +2717,10 @@ class MainWindow(QMainWindow):
             return
         items = []
         for sh in (self.wb.sheets if p["workbook"] else [self.sheet]):
-            for r, c in self._matches(p, sh):
+            found = self._big_find(p, sh, 0, 10_000) if is_big(sh) else self._matches(p, sh)
+            if is_big(sh) and len(found) >= 10_000:
+                self.statusBar().showMessage(f"Showing the first 10,000 matches in {sh.name}", 8000)
+            for r, c in found:
                 items.append((sh.name, r, c, ops.edit_text_for(sh, r, c)[:80]))
         self.find_dlg.show_results(items)
 
@@ -2582,7 +2738,17 @@ class MainWindow(QMainWindow):
         total = 0
         self.undo.beginMacro("Replace All")
         for sh in (self.wb.sheets if p["workbook"] else [self.sheet]):
-            ms = ops.find_matches(sh, p["needle"], p["case"], p["whole"], True)
+            if is_big(sh):
+                # the file's text: whole columns at once; edited cells: the normal way below
+                from ..bigdata import replace_in_columns
+                new_cols, n = self._busy("Replacing...", lambda: replace_in_columns(
+                    sh, p["needle"], p["repl"], p["case"], p["whole"]))
+                if n:
+                    total += n
+                    self.undo.push(MetaCommand(self, sh, {"big_cols": (sh.big_cols, new_cols)}, "Replace"))
+                ms = sorted((k >> 14, k & 0x3FFF) for k in set(sh.values) | set(sh.formulas))
+            else:
+                ms = ops.find_matches(sh, p["needle"], p["case"], p["whole"], True)
             states = ops.replace_states(sh, ms, p["needle"], p["repl"], p["case"], p["whole"])
             if states:
                 total += len(states)
@@ -2726,6 +2892,15 @@ class MainWindow(QMainWindow):
         self.rebuild_tabs()
         self.show_sheet(wb.sheets[wb.active])
         self.update_title()
+        big = next((s for s in wb.sheets if is_big(s)), None)
+        if big is not None:
+            self.statusBar().showMessage(
+                f"Big-file mode: {big.big.N:,} rows. Sum/Average/Count, formulas like =SUM(E:E), sort, "
+                "filter, Find/Replace and Save work on the whole file.", 15000)
+            if getattr(wb, "big_skipped", 0):
+                QMessageBox.warning(self, APP_NAME, f"{wb.big_skipped:,} line(s) of this file had a different "
+                                    "number of fields than the rest and were left out.\n\nSaving over the "
+                                    "original would lose them, so Ekxel will ask you for a new file name.")
 
     def file_save(self):
         self._prep()
@@ -2790,9 +2965,20 @@ class MainWindow(QMainWindow):
             if box.clickedButton() is not save_btn:
                 return False
             self._lost_ack = True
+        if getattr(wb, "big_skipped", 0) and wb.path and os.path.normcase(path) == os.path.normcase(wb.path):
+            QMessageBox.information(self, APP_NAME, "Some lines of the original file couldn't be read, so "
+                                    "saving over it would lose them. Choose a new file name.")
+            if not save_as:
+                return self.file_save_as()
+            return False
         QApplication.setOverrideCursor(Qt.WaitCursor)
         try:
-            save_file(wb, path, self.sheet)
+            if ext in (".csv", ".tsv", ".txt") and is_big(self.sheet):
+                sheet = self.sheet
+                self._busy(f"Saving {os.path.basename(path)}...", lambda prog: save_file(wb, path, sheet, prog),
+                           progress=True)
+            else:
+                save_file(wb, path, self.sheet)
         except PermissionError:
             QApplication.restoreOverrideCursor()
             QMessageBox.critical(self, APP_NAME, f"Couldn't save '{os.path.basename(path)}'.\n\n"
