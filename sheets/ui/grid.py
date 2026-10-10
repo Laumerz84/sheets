@@ -1362,10 +1362,13 @@ class Grid(QWidget):
         self.selection_changed.emit()
         self.setFocus()
 
-    def _point_key(self, dr, dc, extend):
+    def _point_key(self, dr, dc, extend, jump=False):
         base = self.point_cell or self.edit_cell
-        r = self._step(self.rows, base[0], dr) if dr else base[0]
-        c = self._step(self.cols, base[1], dc) if dc else base[1]
+        if jump:  # Ctrl(+Shift)+arrow while pointing: to the edge of the data, like Excel
+            r, c = ops.data_edge(self.sheet, base[0], base[1], dr, dc, MAX_ROWS - 1, MAX_COLS - 1)
+        else:
+            r = self._step(self.rows, base[0], dr) if dr else base[0]
+            c = self._step(self.cols, base[1], dc) if dc else base[1]
         if extend:
             if self.point_anchor is None:
                 self.point_anchor = base

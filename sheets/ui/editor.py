@@ -90,7 +90,7 @@ class CellEditor(QPlainTextEdit):
     insert references while pointing (`point_key` for arrow keys)."""
     commit = Signal(int, int, bool)
     cancel = Signal()
-    point_key = Signal(int, int, bool)  # dr, dc, extend
+    point_key = Signal(int, int, bool, bool)  # dr, dc, extend (Shift), jump to the data edge (Ctrl)
     edited = Signal(str)
 
     def __init__(self, parent=None, in_bar=False):
@@ -299,13 +299,13 @@ class CellEditor(QPlainTextEdit):
             self.edited.emit(t)
             return
         arrows = {Qt.Key_Left: (0, -1), Qt.Key_Right: (0, 1), Qt.Key_Up: (-1, 0), Qt.Key_Down: (1, 0)}
-        if k in arrows and not ctrl and not alt and not self.in_bar:
+        if k in arrows and not alt and not self.in_bar:
             if self.mode == "enter" or self.point_span:
                 if self.can_point():
                     dr, dc = arrows[k]
-                    self.point_key.emit(dr, dc, shift)
+                    self.point_key.emit(dr, dc, shift, ctrl)  # Ctrl(+Shift)+arrow: to the end of the data
                     return
-                if self.mode == "enter":
+                if self.mode == "enter" and not ctrl:
                     dr, dc = arrows[k]
                     self.hide_popups()
                     self.commit.emit(dr, dc, False)
@@ -315,6 +315,8 @@ class CellEditor(QPlainTextEdit):
         if k in (Qt.Key_Left, Qt.Key_Right, Qt.Key_Home, Qt.Key_End):
             self.point_span = None
         super().keyPressEvent(e)
+        if k in arrows and ctrl:
+            e.accept()  # never let Ctrl+arrow fall through to the sheet and move its selection mid-edit
 
     def event(self, e):
         # make Tab reach keyPressEvent instead of moving focus
