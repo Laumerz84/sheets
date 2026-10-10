@@ -1,4 +1,4 @@
-"""Check that Exkel and its Claude panel are set up. Read-only: installs and changes nothing.
+"""Check that Ekxel and its Claude panel are set up. Read-only: installs and changes nothing.
 
 usage: .venv\\Scripts\\python.exe tools\\doctor.py
 Prints one PASS / FAIL / NOTE line per check, with the fix for each FAIL. Exit code 0 = ready."""
@@ -25,7 +25,7 @@ def note(label):
 
 
 def main():
-    print(f"Exkel setup check ({ROOT})\n")
+    print(f"Ekxel setup check ({ROOT})\n")
     check(sys.version_info >= (3, 11), f"Python {sys.version.split()[0]} (need 3.11+)",
           "Install Python 3.11 or newer (winget install Python.Python.3.12), then run setup.bat again.")
     in_venv = os.path.normcase(os.path.abspath(sys.executable)).startswith(
@@ -54,7 +54,7 @@ def main():
     if not cmd:
         check(False, "Claude Code (claude.exe) found",
               "Install Claude Code: in PowerShell run  irm https://claude.ai/install.ps1 | iex  "
-              "(it goes to %USERPROFILE%\\.local\\bin\\claude.exe, which Exkel finds even off PATH). "
+              "(it goes to %USERPROFILE%\\.local\\bin\\claude.exe, which Ekxel finds even off PATH). "
               "Or set the user env var SHEETS_CLAUDE_CMD to a JSON list like [\"C:\\\\path\\\\claude.exe\"].")
     else:
         try:
@@ -71,13 +71,13 @@ def main():
          f'"{VENV_PY}" tools\\e2e_claude.py "put =1+1 in A1"')
 
     lnk = os.path.join(os.environ.get("APPDATA", ""), r"Microsoft\Windows\Start Menu\Programs")
-    has_lnk = os.path.isdir(lnk) and any("exkel" in f.lower() for f in os.listdir(lnk))
+    has_lnk = os.path.isdir(lnk) and any("ekxel" in f.lower() for f in os.listdir(lnk))
     note("Start menu shortcut: " + ("present" if has_lnk else
          f'none (optional, ask the user): "{VENV_PY}" -c "from sheets import winshell; '
          'winshell.write_shortcut(winshell.START_MENU_LNK)"'))
 
     ready = all(results)
-    print("\nREADY: start Exkel, then press Ctrl+Shift+A for the Claude panel." if ready
+    print("\nREADY: start Ekxel, then press Ctrl+Shift+A for the Claude panel." if ready
           else "\nNOT READY: do each FIX above, then run this again.")
     return 0 if ready else 1
 

@@ -30,7 +30,7 @@ def handle_rpc(msg):
     from .ui.mainwindow import WINDOWS
     win = next((w for w in WINDOWS if w.ai_token == msg.get("target")), None)
     if win is None:
-        return {"error": "That Exkel window was closed."}
+        return {"error": "That Ekxel window was closed."}
     return win.ai_tools.call(msg.get("rpc"), msg.get("args") or {})
 
 
@@ -127,7 +127,7 @@ def main(argv=None):
     QGuiApplication.setHighDpiScaleFactorRoundingPolicy(Qt.HighDpiScaleFactorRoundingPolicy.PassThrough)
     app = QApplication(sys.argv[:1])
     app.setApplicationName("Sheets")
-    app.setApplicationDisplayName("Macrosoft Exkel® 2003 Private Reserve Special Cuvée")
+    app.setApplicationDisplayName("Macrosoft Ekxel® 2003 Private Reserve Special Cuvée")
     app.setOrganizationName("Sheets")
     if "--quit" in argv:  # ask a running copy to close (used by App Launcher's Stop)
         _forward([], quit_app=True)

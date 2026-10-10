@@ -1,5 +1,5 @@
 @echo off
-rem Exkel setup: makes .venv next to this file, installs the libraries into it, then checks everything.
+rem Ekxel setup: makes .venv next to this file, installs the libraries into it, then checks everything.
 rem Safe to run again. Nothing is installed system-wide.
 cd /d "%~dp0"
 set "PIP_CACHE_DIR=%~dp0.pip-cache"

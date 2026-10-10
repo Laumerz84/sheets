@@ -14,10 +14,7 @@ from ..numfmt import format_general_fit, format_value
 from ..refs import MAX_COLS, MAX_ROWS, col_name, range_addr, addr
 from ..workbook import DEFAULT_COL_WIDTH, DEFAULT_ROW_HEIGHT, DEFAULT_STYLE
 from .editor import CellEditor
-from .style import (ACCENT, ACCENT_DARK, CELL_BG, DEFAULT_FONT_FAMILY,
-                    DEFAULT_FONT_SIZE, FROZEN_LINE, GRID_LINE, HEADER_BG,
-                    HEADER_FULL_BG, HEADER_LINE, HEADER_SEL_BG, HEADER_TEXT,
-                    REF_COLORS, SEL_FILL)
+from . import style as S  # read at paint time: the skin (View > Skin) can change them
 
 PAD = 3
 
@@ -209,7 +206,7 @@ class Grid(QWidget):
         self._marquee_timer = QTimer(self)
         self._marquee_timer.setInterval(120)
         self._marquee_timer.timeout.connect(self._marquee_tick)
-        self.header_font = QFont("Segoe UI")
+        self.header_font = QFont(S.HEADER_FONT_FAMILY)
 
     # ================================================================ setup
     def attach_formula_bar(self, bar):
@@ -264,7 +261,7 @@ class Grid(QWidget):
         self.rows.configure(sh.row_heights, sh.hidden_rows | sh.filter_hidden, self.zoom)
         self.cols.configure(sh.col_widths, sh.hidden_cols, self.zoom)
         self.hh = max(14, int(round(20 * min(max(self.zoom, 0.6), 2.0))))
-        self.header_font = QFont("Segoe UI")
+        self.header_font = QFont(S.HEADER_FONT_FAMILY)
         self.header_font.setPixelSize(max(8, int(round(12 * min(max(self.zoom, 0.6), 2.0)))))
         fr, fc = sh.freeze
         self.top = self.rows.next_visible(max(self.top, fr))
@@ -544,8 +541,8 @@ class Grid(QWidget):
         k = (st.font, st.size, st.bold, st.italic, st.underline, st.strike)
         f = self._fonts.get(k)
         if f is None:
-            font = QFont(st.font or DEFAULT_FONT_FAMILY)
-            px = (st.size or DEFAULT_FONT_SIZE) * 96 / 72 * self.zoom
+            font = QFont(st.font or S.DISPLAY_FONT_FAMILY)
+            px = (st.size or S.DISPLAY_FONT_SIZE) * 96 / 72 * self.zoom
             font.setPixelSize(max(1, int(round(px))))
             font.setBold(st.bold)
             font.setItalic(st.italic)
@@ -577,7 +574,7 @@ class Grid(QWidget):
             return
         p = QPainter(self)
         W, H = self.width(), self.height()
-        p.fillRect(0, 0, W, H, CELL_BG)
+        p.fillRect(0, 0, W, H, S.CELL_BG)
         rbands = self.row_bands()
         cbands = self.col_bands()
         for rb in rbands:
@@ -591,7 +588,7 @@ class Grid(QWidget):
                 self._paint_overlays(p, rb, cb, clip)
                 p.restore()
         self._paint_headers(p, rbands, cbands)
-        p.setPen(QPen(FROZEN_LINE, 1))
+        p.setPen(QPen(S.FROZEN_LINE, 1))
         if self.fr:
             y = self.hh + self.frozen_h() - 1
             p.drawLine(0, y, W, y)
@@ -622,7 +619,7 @@ class Grid(QWidget):
 
         # gridlines
         if sh.show_grid:
-            p.setPen(QPen(GRID_LINE, 1))
+            p.setPen(QPen(S.GRID_LINE, 1))
             y0, y1 = rb.p0, rb.items[-1][1] + rb.items[-1][2]
             x0, x1 = cb.p0, cb.items[-1][1] + cb.items[-1][2]
             for c, x, w in cols:
@@ -734,7 +731,7 @@ class Grid(QWidget):
             path.lineTo(cx - 1, cy + 4)
             path.lineTo(cx - 1, cy + 1)
             path.closeSubpath()
-            p.setBrush(ACCENT_DARK)
+            p.setBrush(S.ACCENT_DARK)
             p.drawPath(path)
         else:
             p.drawPolygon(QPolygon([QPoint(cx - 4, cy - 2), QPoint(cx + 3, cy - 2), QPoint(cx - 1, cy + 2)]))
@@ -838,7 +835,7 @@ class Grid(QWidget):
         """Hide gridlines under overflowing text, keeping neighbours' fills."""
         if not self.sheet.show_grid:
             return
-        p.fillRect(QRect(x0 - 1, y, x1 - x0, h - 1), CELL_BG)
+        p.fillRect(QRect(x0 - 1, y, x1 - x0, h - 1), S.CELL_BG)
         styles = self.sheet.styles
         if styles:
             x = x0
@@ -881,9 +878,9 @@ class Grid(QWidget):
         y2 = rb.mapf(r2 + 1) if r2 + 1 < MAX_ROWS else rb.mapf(r2) + self.rows.size(r2)
         k = (r1 << 14) | c1
         st = sh.styles.get(k, DEFAULT_STYLE)
-        p.fillRect(QRect(x, y, x2 - x - 1, y2 - y - 1), QColor(st.fill) if st.fill else CELL_BG)
+        p.fillRect(QRect(x, y, x2 - x - 1, y2 - y - 1), QColor(st.fill) if st.fill else S.CELL_BG)
         if sh.show_grid and not st.fill:
-            p.setPen(QPen(GRID_LINE, 1))
+            p.setPen(QPen(S.GRID_LINE, 1))
             p.drawLine(x2 - 1, y, x2 - 1, y2 - 1)
             p.drawLine(x, y2 - 1, x2 - 1, y2 - 1)
         if k in sh.values or k in sh.formulas:
@@ -980,19 +977,19 @@ class Grid(QWidget):
                 region = QRegion(R).subtracted(QRegion(active_rect))
                 p.save()
                 p.setClipRegion(region, Qt.IntersectClip)
-                p.fillRect(R, SEL_FILL)
+                p.fillRect(R, S.SEL_FILL)
                 p.restore()
         if len(rects) == 1:
             R = self._rect_px(rects[0], rb, cb)
             p.setBrush(Qt.NoBrush)
-            p.setPen(QPen(ACCENT, 2, Qt.SolidLine, Qt.SquareCap, Qt.MiterJoin))
+            p.setPen(QPen(S.ACCENT, 2, Qt.SolidLine, Qt.SquareCap, Qt.MiterJoin))
             p.drawRect(R.adjusted(-1, -1, -1, -1))
             if not self.editing:
                 hx, hy = R.right(), R.bottom()
-                p.fillRect(QRect(hx - 3, hy - 3, 7, 7), CELL_BG)
-                p.fillRect(QRect(hx - 2, hy - 2, 5, 5), ACCENT)
+                p.fillRect(QRect(hx - 3, hy - 3, 7, 7), S.CELL_BG)
+                p.fillRect(QRect(hx - 2, hy - 2, 5, 5), S.ACCENT)
         else:
-            p.setPen(QPen(ACCENT, 1))
+            p.setPen(QPen(S.ACCENT, 1))
             p.setBrush(Qt.NoBrush)
             p.drawRect(active_rect.adjusted(0, 0, -2, -2))
 
@@ -1007,7 +1004,7 @@ class Grid(QWidget):
         # copy / cut marquee
         if self.marquee and self.marquee[0] is sh:
             R = self._rect_px(self.marquee[1], rb, cb)
-            pen = QPen(ACCENT, 2, Qt.CustomDashLine)
+            pen = QPen(S.ACCENT, 2, Qt.CustomDashLine)
             pen.setDashPattern([3, 3])
             pen.setDashOffset(self._marquee_phase)
             p.setPen(pen)
@@ -1022,53 +1019,64 @@ class Grid(QWidget):
         col_ranges = [(c1, c2, r1 == 0 and r2 >= MAX_ROWS - 1) for r1, c1, r2, c2 in sel]
         row_ranges = [(r1, r2, c1 == 0 and c2 >= MAX_COLS - 1) for r1, c1, r2, c2 in sel]
         # column header
-        p.fillRect(QRect(rw, 0, W - rw, hh), HEADER_BG)
+        p.fillRect(QRect(rw, 0, W - rw, hh), S.HEADER_BG)
         for cb in cbands:
             p.save()
             p.setClipRect(QRect(cb.p0, 0, cb.p1 - cb.p0, hh))
             for c, x, w in cb.items:
                 inside = [full for a, b, full in col_ranges if a <= c <= b]
                 rect = QRect(x, 0, w, hh)
-                if inside:
-                    p.fillRect(rect, HEADER_FULL_BG if any(inside) else HEADER_SEL_BG)
-                    p.fillRect(QRect(x, hh - 2, w, 2), ACCENT)
-                    p.setPen(ACCENT_DARK)
+                if S.HEADER_BEVEL:
+                    _bevel(p, rect, sunken=bool(inside))
+                    p.setPen(S.HEADER_TEXT)
+                elif inside:
+                    p.fillRect(rect, S.HEADER_FULL_BG if any(inside) else S.HEADER_SEL_BG)
+                    p.fillRect(QRect(x, hh - 2, w, 2), S.ACCENT)
+                    p.setPen(S.ACCENT_DARK)
                 else:
-                    p.setPen(HEADER_TEXT)
+                    p.setPen(S.HEADER_TEXT)
                 p.drawText(rect, Qt.AlignCenter, col_name(c))
-                p.setPen(HEADER_LINE)
-                p.drawLine(x + w - 1, 2, x + w - 1, hh - 1)
+                if not S.HEADER_BEVEL:
+                    p.setPen(S.HEADER_LINE)
+                    p.drawLine(x + w - 1, 2, x + w - 1, hh - 1)
             p.restore()
-        p.setPen(HEADER_LINE)
+        p.setPen(S.HEADER_LINE)
         p.drawLine(rw, hh - 1, W, hh - 1)
         # row header
-        p.fillRect(QRect(0, hh, rw, H - hh), HEADER_BG)
+        p.fillRect(QRect(0, hh, rw, H - hh), S.HEADER_BG)
         for rb in rbands:
             p.save()
             p.setClipRect(QRect(0, rb.p0, rw, rb.p1 - rb.p0))
             for r, y, h in rb.items:
                 inside = [full for a, b, full in row_ranges if a <= r <= b]
                 rect = QRect(0, y, rw, h)
-                if inside:
-                    p.fillRect(rect, HEADER_FULL_BG if any(inside) else HEADER_SEL_BG)
-                    p.fillRect(QRect(rw - 2, y, 2, h), ACCENT)
-                    p.setPen(ACCENT_DARK)
+                if S.HEADER_BEVEL:
+                    _bevel(p, rect, sunken=bool(inside))
+                    p.setPen(S.HEADER_TEXT)
+                elif inside:
+                    p.fillRect(rect, S.HEADER_FULL_BG if any(inside) else S.HEADER_SEL_BG)
+                    p.fillRect(QRect(rw - 2, y, 2, h), S.ACCENT)
+                    p.setPen(S.ACCENT_DARK)
                 else:
-                    p.setPen(HEADER_TEXT)
+                    p.setPen(S.HEADER_TEXT)
                 if h >= 6:
                     p.drawText(rect.adjusted(0, 0, -3, 0), Qt.AlignCenter, str(r + 1))
-                p.setPen(HEADER_LINE)
-                p.drawLine(2, y + h - 1, rw - 1, y + h - 1)
+                if not S.HEADER_BEVEL:
+                    p.setPen(S.HEADER_LINE)
+                    p.drawLine(2, y + h - 1, rw - 1, y + h - 1)
             p.restore()
-        p.setPen(HEADER_LINE)
+        p.setPen(S.HEADER_LINE)
         p.drawLine(rw - 1, hh, rw - 1, H)
         # corner
-        p.fillRect(QRect(0, 0, rw, hh), HEADER_BG)
+        p.fillRect(QRect(0, 0, rw, hh), S.HEADER_BG)
+        if S.HEADER_BEVEL:  # Excel 95: a plain raised button, no triangle
+            _bevel(p, QRect(0, 0, rw, hh), sunken=False)
+            return
         p.setPen(Qt.NoPen)
         p.setBrush(QColor("#B4B4B4"))
         s = hh - 8
         p.drawPolygon(QPolygon([QPoint(rw - 4, hh - 4), QPoint(rw - 4, hh - 4 - s), QPoint(rw - 4 - s, hh - 4)]))
-        p.setPen(HEADER_LINE)
+        p.setPen(S.HEADER_LINE)
         p.drawLine(rw - 1, 0, rw - 1, hh - 1)
         p.drawLine(0, hh - 1, rw - 1, hh - 1)
 
@@ -1309,7 +1317,7 @@ class Grid(QWidget):
                     rect = info.bounds()
                 except Exception:
                     continue
-                self.ref_highlights.append((rect, REF_COLORS[idx % len(REF_COLORS)]))
+                self.ref_highlights.append((rect, S.REF_COLORS[idx % len(S.REF_COLORS)]))
         if old or self.ref_highlights:
             self.update()
 
@@ -1632,19 +1640,21 @@ class Grid(QWidget):
             self.set_selection([target], active=self.sel.active)
 
     def _update_cursor(self, pos):
+        from . import cursors
+        themed = cursors.pointer()  # View > Cursor: replaces the arrow and the cell plus
         area, r, c = self._hit(pos)
         if area == "colborder":
             self.setCursor(Qt.SplitHCursor)
         elif area == "rowborder":
             self.setCursor(Qt.SplitVCursor)
         elif area in ("col", "row", "corner"):
-            self.setCursor(Qt.ArrowCursor)
+            self.setCursor(themed or Qt.ArrowCursor)
         elif self._on_fill_handle(pos):
             self.setCursor(Qt.CrossCursor)
         elif area == "cell" and self._filter_button_hit(pos, r, c):
-            self.setCursor(Qt.ArrowCursor)
+            self.setCursor(themed or Qt.ArrowCursor)
         else:
-            self.setCursor(_plus_cursor())
+            self.setCursor(themed or _plus_cursor())
 
     def _check_autoscroll(self, pos):
         outside = (pos.y() >= self.height() - 2 or pos.x() >= self.width() - 2 or
@@ -1818,6 +1828,20 @@ class Grid(QWidget):
     def _marquee_tick(self):
         self._marquee_phase = (self._marquee_phase + 1) % 6
         self.update()
+
+
+def _bevel(p, rect, sunken):
+    """Windows 95 button edge around a header cell: white top/left and grey bottom/right
+    (swapped when pressed, i.e. the row/column is selected)."""
+    p.fillRect(rect, S.HEADER_BG)
+    light, dark = (QColor("#808080"), QColor("#FFFFFF")) if sunken else (QColor("#FFFFFF"), QColor("#808080"))
+    x0, y0, x1, y1 = rect.left(), rect.top(), rect.right(), rect.bottom()
+    p.setPen(light)
+    p.drawLine(x0, y0, x1, y0)
+    p.drawLine(x0, y0, x0, y1)
+    p.setPen(dark)
+    p.drawLine(x0, y1, x1, y1)
+    p.drawLine(x1, y0, x1, y1)
 
 
 _PLUS = None

@@ -18,7 +18,7 @@ def command():
 
 
 def describe():
-    return ("This adds Exkel to the 'Open with' list for " + ", ".join(EXTS) + " files "
+    return ("This adds Ekxel to the 'Open with' list for " + ", ".join(EXTS) + " files "
             "(for your Windows user only).")
 
 
@@ -50,12 +50,12 @@ def register():
     make_icon()
     base = r"Software\Classes"
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"{base}\{PROGID}") as k:
-        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Exkel Spreadsheet")
-        winreg.SetValueEx(k, "FriendlyTypeName", 0, winreg.REG_SZ, "Exkel Spreadsheet")
+        winreg.SetValueEx(k, "", 0, winreg.REG_SZ, "Ekxel Spreadsheet")
+        winreg.SetValueEx(k, "FriendlyTypeName", 0, winreg.REG_SZ, "Ekxel Spreadsheet")
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"{base}\{PROGID}\DefaultIcon") as k:
         winreg.SetValueEx(k, "", 0, winreg.REG_SZ, ICON)
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"{base}\{PROGID}\shell\open") as k:
-        winreg.SetValueEx(k, "FriendlyAppName", 0, winreg.REG_SZ, "Exkel")
+        winreg.SetValueEx(k, "FriendlyAppName", 0, winreg.REG_SZ, "Ekxel")
     with winreg.CreateKey(winreg.HKEY_CURRENT_USER, rf"{base}\{PROGID}\shell\open\command") as k:
         winreg.SetValueEx(k, "", 0, winreg.REG_SZ, command())
     for ext in EXTS:
@@ -88,7 +88,7 @@ def unregister():
 if __name__ == "__main__":
     if "--remove" in sys.argv:
         unregister()
-        print("Removed Exkel file associations.")
+        print("Removed Ekxel file associations.")
     else:
         register()
-        print("Registered. Right-click a file > Open with > Exkel.")
+        print("Registered. Right-click a file > Open with > Ekxel.")

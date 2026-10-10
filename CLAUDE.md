@@ -1,13 +1,13 @@
-# Exkel (repo/package name: Sheets) - notes for Claude
+# Ekxel (repo/package name: Sheets) - notes for Claude
 
 Excel-style spreadsheet (PySide6). Engine in `sheets/`, UI in `sheets/ui/` (custom grid in `grid.py`),
 Claude panel in `sheets/ai/` (runs the user's Claude Code headless with an MCP bridge as its only tools).
 Tests: `.venv\Scripts\python.exe -m pytest` (offscreen Qt). Screenshots: `tools\snapshot.py`.
 Live Claude check (uses the user's Claude usage): `tools\e2e_claude.py "request"`.
 
-## SETUP: if the user asks you to set up Exkel (or its Claude chat), do exactly this
+## SETUP: if the user asks you to set up Ekxel (or its Claude chat), do exactly this
 
-**What you are setting up.** Exkel has a chat panel docked in its window. The user opens it with
+**What you are setting up.** Ekxel has a chat panel docked in its window. The user opens it with
 **Ctrl+Shift+A**, or View > Claude. That chat is the user's own Claude Code, using their login.
 No API key is needed. In that chat, Claude can only read and change the open workbook.
 You do not write any code for this. It is already built. You only install and check.
@@ -32,19 +32,19 @@ It creates `.venv`, installs the libraries, then prints a check list. It is safe
 Ask them: "Have you signed in to Claude Code on this PC? If not, open a terminal, type
 `claude`, and log in." The user does the login themselves. Never type a password or a code for them.
 
-**Step 4. Start Exkel.** Start it so it keeps running after your session ends:
+**Step 4. Start Ekxel.** Start it so it keeps running after your session ends:
 
     Invoke-CimMethod Win32_Process -MethodName Create -Arguments @{ CommandLine = '"<repo folder>\.venv\Scripts\pythonw.exe" "<repo folder>\launch.pyw"'; CurrentDirectory = '<repo folder>' }
 
 Put the real folder in place of `<repo folder>`. `ReturnValue` 0 means it started.
 
-**Step 5. Tell the user how to use it.** Say: "In Exkel, press **Ctrl+Shift+A** to open the Claude
+**Step 5. Tell the user how to use it.** Say: "In Ekxel, press **Ctrl+Shift+A** to open the Claude
 chat. Ask it something small, like 'put 1 to 10 in column A'. **Ctrl+Z** undoes what it did."
 
 **Optional. Ask the user first, then do only what they say yes to.**
 - Start menu shortcut:
   `.venv\Scripts\python.exe -c "from sheets import winshell; winshell.write_shortcut(winshell.START_MENU_LNK)"`
-- Show Exkel in "Open with" for csv/xlsx files: `.venv\Scripts\python.exe -m sheets.register`.
+- Show Ekxel in "Open with" for csv/xlsx files: `.venv\Scripts\python.exe -m sheets.register`.
   `--remove` undoes it.
 - A full live test of the chat: `.venv\Scripts\python.exe tools\e2e_claude.py "put =1+1 in A1"`.
   It uses a little of the user's Claude usage. It should print a transcript and the changed cells.
@@ -62,7 +62,7 @@ How it's wired, for changes: `sheets/ai/panel.py` writes a per-window MCP config
 `claude -p --output-format stream-json --mcp-config <cfg> --strict-mcp-config --tools "" --allowedTools mcp__sheets
 --setting-sources ""`. The `--setting-sources ""` keeps the user's own CLAUDE.md, hooks and settings out of the
 panel. A follow-up message resumes the chat with `--resume <session id>`. The bridge (`mcp_server.py`) talks to
-the running Exkel over its QLocalServer socket. `sheets/ai/tools.py` holds the tool implementations, and each
+the running Ekxel over its QLocalServer socket. `sheets/ai/tools.py` holds the tool implementations, and each
 request's edits are one undo step. The model picker in the panel passes `--model` (opus / sonnet / haiku).
 
 ## Feature wishlist - ask the user about it

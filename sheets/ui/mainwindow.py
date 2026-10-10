@@ -5,7 +5,7 @@ import math
 import os
 
 from PySide6.QtCore import QPoint, QSize, Qt, QTimer, QUrl
-from PySide6.QtGui import (QAction, QActionGroup, QColor, QFont, QFontMetrics,
+from PySide6.QtGui import (QAction, QActionGroup, QColor, QCursor, QFont, QFontMetrics,
                            QIcon, QKeySequence, QPainter, QPixmap, QUndoStack)
 from PySide6.QtWidgets import (QApplication, QComboBox, QDialog,
                                QDialogButtonBox, QFileDialog, QFontComboBox,
@@ -34,7 +34,7 @@ from .dialogs import (ColorMenu, FilterPopup, FindDialog, FormatCellsDialog,
 from .editor import CellEditor
 from .grid import Grid
 
-APP_NAME = "Macrosoft Exkel® 2003 Private Reserve Special Cuvée"
+APP_NAME = "Macrosoft Ekxel® 2003 Private Reserve Special Cuvée"
 WINDOWS = []
 SETTINGS_DIR = os.path.join(os.environ.get("APPDATA", os.path.expanduser("~")), "Sheets")
 SETTINGS_FILE = os.path.join(SETTINGS_DIR, "settings.json")
@@ -69,38 +69,212 @@ ICON_SIZES = (16, 20, 24, 32, 40, 48, 64, 128, 256)
 
 
 def paint_app_icon(px):
-    """Exkel's icon at px x px: a banded green sheet with a dark K tile over its left edge."""
-    from PySide6.QtCore import QRectF
-    from PySide6.QtGui import QFont, QImage, QLinearGradient, QPainterPath
+    """Ekxel's icon at px x px, after the Excel 2003 icon: glossy green frame, white panel with a
+    grey floor, and a big bevelled, slanted 3D K. Its arm tucks under the leg, the leg runs into
+    the stem, a flattened shadow piece lies on the floor between the legs and a small boxy tip
+    pokes out on the right. Drawn on a 100 x 100 grid; up to 24 px the K is flat so it stays legible."""
+    from PySide6.QtCore import QPointF, QRectF
+    from PySide6.QtGui import QImage, QLinearGradient, QPainterPath, QPen, QPolygonF
     img = QImage(px, px, QImage.Format_ARGB32_Premultiplied)
     img.fill(Qt.transparent)
-    s = px / 64
+    s = px / 100
+    small = px <= 24
+    detail = px >= 96  # halftone dots and hairlines only where they show
     p = QPainter(img)
     p.setRenderHint(QPainter.Antialiasing)
-    p.setRenderHint(QPainter.TextAntialiasing)
     p.setPen(Qt.NoPen)
-    sheet = QPainterPath()
-    sheet.addRoundedRect(QRectF(18 * s, 6 * s, 42 * s, 52 * s), 4.5 * s, 4.5 * s)
-    p.setClipPath(sheet)
-    for x, y, w, h, color in ((18, 6, 21, 13, "#21A366"), (39, 6, 21, 13, "#33C481"),
-                              (18, 19, 21, 13, "#107C41"), (39, 19, 21, 13, "#21A366"),
-                              (18, 32, 42, 26, "#185C37")):
+
+    def P(u, v):
+        return QPointF(u * s, v * s)
+
+    def poly(pts):
+        path = QPainterPath()
+        path.addPolygon(QPolygonF([P(u, v) for u, v in pts]))
+        path.closeSubpath()
+        return path
+
+    def rrect(u, v, w, h, r):
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(u * s, v * s, w * s, h * s), r * s, r * s)
+        return path
+
+    def ellipse(cu, cv, ru, rv):
+        path = QPainterPath()
+        path.addEllipse(P(cu, cv), ru * s, rv * s)
+        return path
+
+    def vgrad(v0, v1, stops):
+        g = QLinearGradient(P(0, v0), P(0, v1))
+        for t, c in stops:
+            g.setColorAt(t, QColor(c))
+        return g
+
+    def fill(path, brush):
+        p.setBrush(brush)
+        p.drawPath(path)
+
+    def dots(path, color, step=2.3):
+        """The original's fine halftone dots, clipped to path."""
+        if not detail:
+            return
+        p.save()
+        p.setClipPath(path, Qt.IntersectClip)
         p.setBrush(QColor(color))
-        p.drawRect(QRectF(x * s, y * s, w * s, h * s))
-    p.setClipping(False)
-    small = px <= 24  # bigger tile and K so the letter still reads in the taskbar's small sizes
-    tile = QRectF(1 * s, 11 * s, 42 * s, 42 * s) if small else QRectF(4 * s, 15 * s, 34 * s, 34 * s)
-    grad = QLinearGradient(tile.topLeft(), tile.bottomLeft())
-    grad.setColorAt(0, QColor("#18884F"))
-    grad.setColorAt(1, QColor("#0B6A35"))
-    p.setBrush(grad)
-    p.drawRoundedRect(tile, 3.5 * s, 3.5 * s)
-    f = QFont("Segoe UI")
-    f.setWeight(QFont.Bold)
-    f.setPixelSize(max(8, round((33 if small else 25) * s)))
-    p.setFont(f)
-    p.setPen(QColor("#FFFFFF"))
-    p.drawText(tile.translated(0.6 * s, -0.4 * s), Qt.AlignCenter, "K")
+        d = max(1.0, 0.3 * s)
+        row, v = 0, 0.7
+        while v < 100:
+            u = 0.4 + (step / 2 if row % 2 else 0) + ((row * 7) % 3) * 0.25
+            while u < 100:
+                p.drawRect(QRectF(u * s, v * s, d, d))
+                u += step
+            v += step * 0.8
+            row += 1
+        p.restore()
+
+    # --- frame: saturated green, dark outline, a light glossy band over its lower half ---
+    fill(rrect(0.6, 0.6, 98.8, 98.8, 7), QColor("#006630"))
+    fill(rrect(1.8, 1.8, 96.4, 96.4, 6), QColor("#01933F"))
+    if not small:
+        band = rrect(3.4, 0, 93.2, 96.6, 5).intersected(ellipse(50, 53.7, 50, 13.5).united(
+            poly([(0, 53.7), (100, 53.7), (100, 100), (0, 100)])))
+        fill(band, vgrad(45, 96, [(0, "#80C98B"), (0.22, "#64BB80"), (0.45, "#4BAF73"),
+                                  (0.6, "#3FA96D"), (0.78, "#20A05A"), (0.92, "#0A9745"),
+                                  (1, "#01933F")]))
+
+    # --- white panel, with a thin dark inner edge (its shadow, down the left and bottom) ---
+    if small:
+        pu, pv, pw, ph, pr, lw = 8.5, 8.5, 83, 83, 4, max(1.0 / s, 0.9)
+    else:
+        pu, pv, pw, ph, pr, lw = 10.6, 10.4, 79, 79, 4, 1.0
+        fill(rrect(pu - 1.6, pv + 1.4, pw, ph, pr), QColor(0, 70, 25, 120))
+    fill(rrect(pu, pv, pw, ph, pr), QColor("#006630"))
+    panel = rrect(pu + lw, pv + lw, pw - 2 * lw, ph - 2 * lw, pr - lw / 2)
+    fill(panel, QColor("#FFFFFF"))
+
+    # --- the K ---
+    m = 8 / 52  # stem slant: its edges are u = a - m * (v - 23), from v 23 to 75
+
+    def stem_u(a, v):
+        return a - m * (v - 23)
+
+    k = 1.2  # leg slant: its edges are u = a - k * (75 - v)
+
+    def leg_u(a, v):
+        return a - k * (75 - v)
+
+    SL, SR = 22.5, 41.5  # stem's left/right edge at the top
+    LL, LR = 60, 87      # leg's left/right edge at the bottom
+    stem = [(SL, 23), (SR, 23), (stem_u(SR, 75), 75), (stem_u(SL, 75), 75)]
+    leg = [(leg_u(LR, 28.5), 28.5), (LR, 75), (LL, 75), (leg_u(LL, 48.4), 48.4)]
+    arm = [(61, 24.5), (84, 24.5), (53.4, 58.3), (40.3, 47.3)]  # lower end hidden under the leg
+    tip = [(52, 53.5), (83, 53.5), (70.3, 67.5), (60, 67.5)]    # pokes out right of the leg
+    flat = [(28, 50), (44, 50), (56, 69.5), (28, 69.5)]         # lies on the floor between legs
+
+    if small:
+        pen = QPen(QColor("#005C26"), max(1.0, 3.2 * s))
+        pen.setJoinStyle(Qt.MiterJoin)
+        p.setPen(pen)
+        fill(poly(stem).united(poly(leg)).united(poly(arm)), QColor("#3FAE3A"))
+        p.end()
+        return img
+
+    p.save()
+    p.setClipPath(panel)
+
+    # floor: grey ground with a curved horizon, fading to white
+    floor = ellipse(50, 50.5, 37.5, 9).united(poly([(12.5, 50.5), (87.5, 50.5), (87.5, 89), (12.5, 89)]))
+    floor = floor.intersected(poly([(13.4, 0), (86.6, 0), (86.6, 100), (13.4, 100)]))
+    fill(floor, vgrad(41.5, 89, [(0, "#D3D3D3"), (0.25, "#DADADA"), (0.5, "#E4E4E4"),
+                                  (0.75, "#EFEFEF"), (0.95, "#FBFBFB"), (1, "#FFFFFF")]))
+
+    # soft grey drop shadow of the whole letter, down and to the left
+    letter = poly(stem).united(poly(leg)).united(poly(arm)).united(poly(tip)).united(poly(flat))
+    p.save()
+    p.translate(-2.6 * s, 1.4 * s)
+    fill(letter, QColor(150, 160, 150, 95))
+    p.restore()
+
+    face_c = QColor("#55B447")
+    dark = QColor("#006630")
+    dot_c = "#45973B"
+
+    def shade(pts, shadow_pts, v0, v1):
+        """The letter's dark cast shadow inside a piece that lies on the floor."""
+        p.save()
+        p.setClipPath(poly(pts), Qt.IntersectClip)
+        fill(poly(shadow_pts), vgrad(v0, v1, [(0, "#2A6A2A"), (0.35, "#37722F"),
+                                              (0.7, "#45973B"), (1, "#52AE46")]))
+        p.restore()
+
+    # the flat piece on the floor: thick dark bottom edge, shadow inside a green rim
+    flat_face = [(28, 50), (44, 50), (55.2, 68.3), (28, 68.3)]
+    fill(poly(flat), dark)
+    fill(poly(flat_face), face_c)
+    dots(poly(flat_face), dot_c)
+    shade(flat_face, [(20, 57.2), (31, 56.4), (leg_u(LL, 56.4) - 3.4, 56.4),
+                      (leg_u(LL, 68.3) - 3.4, 68.3), (20, 68.3)], 56, 68.3)
+
+    # the boxy tip: thick dark top and right edges, shadow inside
+    tip_face = [(52, 54.8), (80.9, 54.8), (68.2, 67.5), (60, 67.5)]
+    fill(poly(tip), dark)
+    fill(poly(tip_face), face_c)
+    dots(poly(tip_face), dot_c)
+    shade(tip_face, [(55, 56.4), (70, 56.9), (78.4, 58.6), (68.6, 69), (55, 69)], 56.4, 64)
+
+    # the arm, behind the leg: thick dark outline all round
+    arm_face = [(62.9, 26.1), (81.8, 26.1), (51.2, 58.3), (42.4, 47.3)]
+    fill(poly(arm), dark)
+    fill(poly(arm_face), face_c)
+    dots(poly(arm_face), dot_c)
+
+    def bar(edge_l, edge_r, v_top, v_bot, du, bevel_w0, bevel_w1, bevel_top, clip=None):
+        """A front bar (stem or leg): dark side faces on the right and bottom, a thin line on the
+        left and top, dotted green face, and the light bevel down its left edge.
+        edge_l/edge_r(v) give its edges; du is their du/dv; clip limits it."""
+        p.save()
+        if clip is not None:
+            p.setClipPath(clip, Qt.IntersectClip)
+        fill(poly([(edge_l(v_top), v_top), (edge_r(v_top), v_top),
+                   (edge_r(v_bot), v_bot), (edge_l(v_bot), v_bot)]), dark)
+        vb = v_bot - 1.0
+        fill(poly([(edge_l(v_top), v_top), (edge_r(v_top) - 2.0, v_top),
+                   (edge_r(vb) - 2.0, vb), (edge_l(vb), vb)]), QColor("#3E9A37"))
+        t = 0.35
+        face = poly([(edge_l(v_top + t) + t, v_top + t), (edge_r(v_top + t) - 2.0, v_top + t),
+                     (edge_r(vb) - 2.0, vb), (edge_l(vb) + t, vb)])
+        fill(face, face_c)
+        dots(face, dot_c)
+        # bevel: a strip inset from the left edge, widening downwards, top right corner cut off
+        b0, b1 = edge_l(bevel_top) + 2.5, edge_l(vb) + 2.5
+        bevel = poly([(b0, bevel_top), (b0 + bevel_w0 - 1.2, bevel_top),
+                      (b0 + bevel_w0 + 1.4 * du, bevel_top + 1.4),
+                      (b1 + bevel_w1, vb), (b1, vb)]).intersected(face)
+        fill(bevel, vgrad(bevel_top, vb, [(0, "#B9CBB8"), (0.18, "#9CCB9F"), (0.4, "#88CB8E"),
+                                         (1, "#86CA8C")]))
+        # its right side melts into the face, like the original's dithered edge
+        fg = QLinearGradient(P(b1 + bevel_w1 * 0.65, vb), P(b1 + bevel_w1, vb))
+        fg.setColorAt(0, QColor(85, 180, 71, 0))
+        fg.setColorAt(1, QColor(85, 180, 71, 120))
+        p.save()
+        p.setClipPath(bevel, Qt.IntersectClip)
+        fill(poly([(b0 + bevel_w0 * 0.65, bevel_top), (b0 + bevel_w0 + 1, bevel_top),
+                   (b1 + bevel_w1 + 1, vb), (b1 + bevel_w1 * 0.65, vb)]), fg)
+        p.restore()
+        dots(bevel, "#6CBF62")
+        if detail:  # thin grey line along the bevel's top and left edges
+            p.setPen(QPen(QColor("#A9BDA9"), max(1.0, 0.45 * s)))
+            p.drawLine(P(b0, bevel_top), P(b0 + bevel_w0 - 1.2, bevel_top))
+            p.drawLine(P(b0, bevel_top), P(b1, vb))
+            p.setPen(Qt.NoPen)
+        p.restore()
+
+    # the leg crosses over the arm; its top end disappears into the stem
+    right_of_stem = poly([(stem_u(32, 0), 0), (100, 0), (100, 100), (stem_u(32, 100), 100)])
+    bar(lambda v: leg_u(LL, v), lambda v: leg_u(LR, v), 28.5, 75, k, 4.0, 5.5, 44, right_of_stem)
+    # the stem, in front of everything
+    bar(lambda v: stem_u(SL, v), lambda v: stem_u(SR, v), 23, 75, -m, 4.6, 6.6, 25.7)
+
+    p.restore()
     p.end()
     return img
 
@@ -169,6 +343,11 @@ class MainWindow(QMainWindow):
         else:
             self.resize(1400, 860)
         WINDOWS.append(self)
+        from . import cursors
+        cursors.load_once(self.settings)  # the saved cursor theme (View > Cursor)
+        from . import skin
+        skin.attach(self)  # the saved skin (View > Skin)
+        self.apply_cursor()
         QTimer.singleShot(0, self.grid.setFocus)
 
     def showEvent(self, e):
@@ -319,9 +498,9 @@ class MainWindow(QMainWindow):
         self.a_claude.toggled.connect(lambda on: on and QTimer.singleShot(0, self.claude_panel.input.setFocus))
         self.addAction(self.a_claude)
         self.a_shortcuts = A("&Keyboard Shortcuts", self.show_shortcuts, "F1")
-        self.a_about = A("&About Exkel", self.about)
+        self.a_about = A("&About Ekxel", self.about)
         self.a_wishlist = A("Feature &Wishlist...", self.show_wishlist)
-        self.a_register = A("Make Exkel the default for CSV/Excel files...", self.register_file_types)
+        self.a_register = A("Make Ekxel the default for CSV/Excel files...", self.register_file_types)
 
     def _build_menus(self):
         mb = self.menuBar()
@@ -364,6 +543,9 @@ class MainWindow(QMainWindow):
         m.addAction(self.a_gridlines)
         m.addAction(self.a_show_formulas)
         m.addAction(self.a_claude)
+        self._build_cursor_menu(m.addMenu("C&ursor"))
+        from . import skin
+        skin.build_menu(m.addMenu("S&kin"), self)
         m.addSeparator()
         for a in (self.a_zoom_in, self.a_zoom_out, self.a_zoom_100):
             m.addAction(a)
@@ -862,10 +1044,10 @@ class MainWindow(QMainWindow):
         self.a_merge.setChecked(merged)
         self.merge_btn.setChecked(merged)
         self.font_box.blockSignals(True)
-        self.font_box.setCurrentFont(QFont(st.font or S.DEFAULT_FONT_FAMILY))
+        self.font_box.setCurrentFont(QFont(st.font or S.DISPLAY_FONT_FAMILY))
         self.font_box.blockSignals(False)
         self.size_box.blockSignals(True)
-        size = st.size or S.DEFAULT_FONT_SIZE
+        size = st.size or S.DISPLAY_FONT_SIZE
         self.size_box.setCurrentText(str(int(size)) if float(size).is_integer() else str(size))
         self.size_box.blockSignals(False)
         idx = next((i for i, (_, f) in enumerate(NUMBER_PRESETS) if f == st.numfmt), -1)
@@ -1182,7 +1364,8 @@ class MainWindow(QMainWindow):
     def set_font_family(self, fam):
         if self._syncing:
             return
-        self.set_style_field("font", None if fam == S.DEFAULT_FONT_FAMILY else fam)
+        same = fam == S.DEFAULT_FONT_FAMILY == S.DISPLAY_FONT_FAMILY  # under a skin, keep picks explicit
+        self.set_style_field("font", None if same else fam)
         self.grid.setFocus()
 
     def set_font_size(self, text):
@@ -1194,7 +1377,7 @@ class MainWindow(QMainWindow):
             return
         if not 1 <= v <= 409:
             return
-        self.set_style_field("size", None if v == S.DEFAULT_FONT_SIZE else v)
+        self.set_style_field("size", None if v == S.DEFAULT_FONT_SIZE == S.DISPLAY_FONT_SIZE else v)
         self.grid.setFocus()
 
     def _font_color_chosen(self, c):
@@ -1767,6 +1950,71 @@ class MainWindow(QMainWindow):
         self.grid.relayout()
         self._sync_view_actions()
 
+    # ================================================================ cursor theme
+    def _build_cursor_menu(self, menu):
+        """Excel (normal), one entry per image in the cursors folder, then 'Add image file...'.
+        Rebuilt each time it opens, so a newly added image shows up straight away."""
+        from . import cursors
+
+        def fill():
+            menu.clear()
+            group = QActionGroup(menu)
+            cur, cur_file = cursors.current(), os.path.normcase(cursors.current_file() or "")
+            normal = menu.addAction("Excel (normal)")
+            normal.setCheckable(True)
+            normal.setChecked(cur != cursors.FILE)
+            normal.triggered.connect(lambda _checked=False: self.set_cursor_theme("default"))
+            group.addAction(normal)
+            for label, path in cursors.library(os.path.join(SETTINGS_DIR, "cursors")):
+                a = menu.addAction(label)
+                a.setCheckable(True)
+                a.setChecked(cur == cursors.FILE and os.path.normcase(path) == cur_file)
+                a.triggered.connect(lambda _checked=False, p=path: self.set_cursor_theme(cursors.FILE, p))
+                group.addAction(a)
+            menu.addSeparator()
+            menu.addAction("Add image &file...").triggered.connect(lambda _checked=False: self.pick_cursor_file())
+        menu.aboutToShow.connect(fill)
+        fill()
+
+    def set_cursor_theme(self, name, file=None):
+        from . import cursors
+        cursors.set_current(name, file)
+        s = load_settings()
+        s["cursor_theme"] = cursors.current()
+        if file:
+            s["cursor_file"] = file
+        save_settings(s)
+        self.settings = s
+        for w in WINDOWS:
+            w.apply_cursor()
+
+    def pick_cursor_file(self):
+        from . import cursors
+        path, _ = QFileDialog.getOpenFileName(
+            self, "Cursor image", os.path.expanduser("~"),
+            "Images (*.png *.gif *.ico *.cur *.bmp *.jpg *.jpeg *.webp);;All files (*)")
+        if not path:
+            return
+        try:
+            kept = cursors.keep_copy(path, os.path.join(SETTINGS_DIR, "cursors"))
+        except OSError as e:
+            QMessageBox.warning(self, APP_NAME, f"Couldn't copy that image:\n\n{e}")
+            return
+        if cursors.cursor_from_file(kept) is None:
+            QMessageBox.warning(self, APP_NAME, "That file isn't an image Ekxel can read (or it's fully transparent).")
+            return
+        self.set_cursor_theme(cursors.FILE, kept)
+
+    def apply_cursor(self):
+        """Use the cursor theme for this window (children inherit it; the grid picks per area)."""
+        from . import cursors
+        c = cursors.pointer()
+        if c is None:
+            self.unsetCursor()
+        else:
+            self.setCursor(c)
+        self.grid._update_cursor(self.grid.mapFromGlobal(QCursor.pos()))
+
     def toggle_gridlines(self):
         sh = self.sheet
         self._push_meta({"show_grid": (sh.show_grid, not sh.show_grid)}, "Gridlines", relayout=False)
@@ -2028,7 +2276,7 @@ class MainWindow(QMainWindow):
                 self.grid.set_active(r, c)
                 self.find_dlg.status.setText(f"Found at {sh.name}!{addr(r, c)}")
                 return True
-        self.find_dlg.status.setText("Exkel couldn't find what you were looking for.")
+        self.find_dlg.status.setText("Ekxel couldn't find what you were looking for.")
         return False
 
     def find_all(self, p):
@@ -2250,7 +2498,7 @@ class MainWindow(QMainWindow):
             box = QMessageBox(self)
             box.setWindowTitle(APP_NAME)
             box.setIcon(QMessageBox.Warning)
-            box.setText(f"This workbook contains {', '.join(wb.xl_lost_features)} that Exkel can't keep.\n\n"
+            box.setText(f"This workbook contains {', '.join(wb.xl_lost_features)} that Ekxel can't keep.\n\n"
                         "Saving over the original file will remove them. You can Save As a new file instead "
                         "to keep the original intact.")
             save_btn = box.addButton("Save Anyway", QMessageBox.AcceptRole)
@@ -2328,7 +2576,7 @@ class MainWindow(QMainWindow):
         from ..register import describe, register
         r = QMessageBox.question(
             self, APP_NAME,
-            describe() + "\n\nWindows will then list Exkel under 'Open with' for these files, and you can pick it "
+            describe() + "\n\nWindows will then list Ekxel under 'Open with' for these files, and you can pick it "
             "as the default app (Windows asks you to confirm that part yourself).\n\nContinue?")
         if r != QMessageBox.Yes:
             return
@@ -2339,8 +2587,8 @@ class MainWindow(QMainWindow):
             return
         QMessageBox.information(
             self, APP_NAME,
-            "Done. To make Exkel the default: right-click a .csv or .xlsx file → Open with → Choose another app → "
-            "Exkel → tick 'Always'.")
+            "Done. To make Ekxel the default: right-click a .csv or .xlsx file → Open with → Choose another app → "
+            "Ekxel → tick 'Always'.")
 
     def show_shortcuts(self):
         text = """
@@ -2382,7 +2630,7 @@ class MainWindow(QMainWindow):
         WishlistDialog(self).exec()
 
     def about(self):
-        QMessageBox.about(self, "About Exkel",
+        QMessageBox.about(self, "About Ekxel",
                           "<b>" + APP_NAME + "</b><br>A lightweight spreadsheet for CSV and Excel files.<br><br>"
                           "Opens .xlsx, .xlsm, .xls, .csv and .tsv; saves .xlsx and .csv.")
 

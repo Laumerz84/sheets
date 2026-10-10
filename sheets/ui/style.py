@@ -1,6 +1,6 @@
 """Colors, fonts, palette and toolbar icons."""
 from PySide6.QtCore import QPointF, QRectF, Qt
-from PySide6.QtGui import (QColor, QFont, QFontDatabase, QIcon, QPainter,
+from PySide6.QtGui import (QColor, QFont, QFontDatabase, QIcon, QIconEngine, QPainter,
                            QPainterPath, QPalette, QPen, QPixmap)
 
 ACCENT = QColor("#217346")          # Excel green
@@ -18,8 +18,35 @@ FROZEN_LINE = QColor("#A6A6A6")
 
 REF_COLORS = ["#2E64C8", "#C42B1C", "#7B3FB4", "#107C10", "#C46200", "#0099BC", "#B4009E"]
 
-DEFAULT_FONT_FAMILY = "Calibri"
+DEFAULT_FONT_FAMILY = "Calibri"   # the workbook's default font (what files are saved with)
 DEFAULT_FONT_SIZE = 11.0
+DISPLAY_FONT_FAMILY = DEFAULT_FONT_FAMILY  # what unformatted cells are drawn in (the skin may change it)
+DISPLAY_FONT_SIZE = DEFAULT_FONT_SIZE
+HEADER_FONT_FAMILY = "Segoe UI"
+HEADER_BEVEL = False  # Windows 95 raised-button row/column headers
+
+# ---------------------------------------------------------------- skins (View > Skin)
+# The skin swaps these module values; the grid and the icons read them when they paint.
+SKIN = "modern"
+_SKIN_KEYS = ("ACCENT", "ACCENT_DARK", "ACCENT_LIGHT", "GRID_LINE", "HEADER_BG", "HEADER_LINE", "HEADER_TEXT",
+              "HEADER_SEL_BG", "HEADER_FULL_BG", "SEL_FILL", "CELL_BG", "FROZEN_LINE", "DISPLAY_FONT_FAMILY",
+              "DISPLAY_FONT_SIZE", "HEADER_FONT_FAMILY", "HEADER_BEVEL")
+_MODERN = {k: globals()[k] for k in _SKIN_KEYS}
+_WIN95 = {
+    "ACCENT": QColor("#000000"), "ACCENT_DARK": QColor("#000000"), "ACCENT_LIGHT": QColor("#C0C0C0"),
+    "GRID_LINE": QColor("#C0C0C0"), "HEADER_BG": QColor("#C0C0C0"), "HEADER_LINE": QColor("#808080"),
+    "HEADER_TEXT": QColor("#000000"), "HEADER_SEL_BG": QColor("#C0C0C0"), "HEADER_FULL_BG": QColor("#C0C0C0"),
+    "SEL_FILL": QColor(0, 0, 0, 70), "CELL_BG": QColor("#FFFFFF"), "FROZEN_LINE": QColor("#000000"),
+    "DISPLAY_FONT_FAMILY": "Arial", "DISPLAY_FONT_SIZE": 10.0, "HEADER_FONT_FAMILY": "Microsoft Sans Serif",
+    "HEADER_BEVEL": True,
+}
+SKINS = {"modern": "Modern", "excel95": "Excel 95"}
+
+
+def set_skin(name):
+    global SKIN
+    SKIN = name if name in SKINS else "modern"
+    globals().update(_WIN95 if SKIN == "excel95" else _MODERN)
 
 _icon_font_family = None
 
@@ -99,9 +126,151 @@ def apply_palette(app):
     """)
 
 
+def apply_palette_95(app):
+    """Excel 95 / Windows 95: battleship grey, raised and sunken bevels, MS Sans Serif, navy highlights.
+    Qt's "Windows" style draws the classic 3D buttons, scrollbars and checkboxes; the stylesheet only
+    covers what it doesn't (toolbars, menus, edits) and leaves scrollbars and push buttons to it."""
+    app.setStyle("Windows")
+    grey, white, dark, black, navy = (QColor(c) for c in ("#C0C0C0", "#FFFFFF", "#808080", "#000000", "#000080"))
+    pal = QPalette()
+    for role, c in ((QPalette.Window, grey), (QPalette.WindowText, black), (QPalette.Base, white),
+                    (QPalette.AlternateBase, grey), (QPalette.Text, black), (QPalette.Button, grey),
+                    (QPalette.ButtonText, black), (QPalette.Light, white), (QPalette.Midlight, QColor("#DFDFDF")),
+                    (QPalette.Mid, QColor("#A0A0A0")), (QPalette.Dark, dark), (QPalette.Shadow, black),
+                    (QPalette.Highlight, navy), (QPalette.HighlightedText, white),
+                    (QPalette.ToolTipBase, QColor("#FFFFE1")), (QPalette.ToolTipText, black),
+                    (QPalette.PlaceholderText, dark), (QPalette.Link, navy)):
+        pal.setColor(role, c)
+    for role in (QPalette.Text, QPalette.ButtonText, QPalette.WindowText):
+        pal.setColor(QPalette.Disabled, role, dark)
+    app.setPalette(pal)
+    f = QFont("Microsoft Sans Serif", 8)
+    f.setStyleStrategy(QFont.NoAntialias)  # crisp, un-smoothed text like 1995
+    app.setFont(f)
+    raised = "border: 1px solid; border-color: #FFFFFF #808080 #808080 #FFFFFF;"
+    sunken = "border: 1px solid; border-color: #808080 #FFFFFF #FFFFFF #808080;"
+    app.setStyleSheet(f"""
+        QToolBar {{ background: #C0C0C0; border: none; border-top: 1px solid #FFFFFF;
+                    border-bottom: 1px solid #808080; spacing: 1px; padding: 2px 3px; }}
+        QToolBar::separator {{ background: #808080; width: 1px; margin: 3px 4px; }}
+        QToolButton {{ border: 1px solid transparent; padding: 2px; background: #C0C0C0; }}
+        QToolButton:hover {{ {raised} }}
+        QToolButton:checked {{ {sunken} background: #DFDFDF; }}
+        QToolButton:pressed {{ {sunken} }}
+        QToolButton[popupMode="1"] {{ padding-right: 12px; }}
+        QMenuBar {{ background: #C0C0C0; color: #000000; padding: 1px; }}
+        QMenuBar::item {{ padding: 3px 8px; background: transparent; }}
+        QMenuBar::item:selected {{ background: #000080; color: #FFFFFF; }}
+        QMenu {{ background: #C0C0C0; border: 2px solid; border-color: #DFDFDF #000000 #000000 #DFDFDF; padding: 2px; }}
+        QMenu::item {{ padding: 3px 24px 3px 24px; color: #000000; }}
+        QMenu::item:selected {{ background: #000080; color: #FFFFFF; }}
+        QMenu::item:disabled {{ color: #808080; }}
+        QMenu::separator {{ height: 2px; border-top: 1px solid #808080; border-bottom: 1px solid #FFFFFF; margin: 3px 2px; }}
+        QStatusBar {{ background: #C0C0C0; border-top: 1px solid #FFFFFF; }}
+        QStatusBar QLabel {{ padding: 0 6px; color: #000000; {sunken} }}
+        QTabBar::tab {{ background: transparent; border: none; padding: 3px 18px; margin: 0; color: #000000; }}
+        QComboBox {{ padding: 1px 4px; background: #FFFFFF; {sunken} }}
+        QLineEdit, QPlainTextEdit, QSpinBox, QDoubleSpinBox {{ background: #FFFFFF; {sunken}
+                    selection-background-color: #000080; selection-color: #FFFFFF; }}
+        QGroupBox {{ border: 1px solid #808080; margin-top: 10px; padding-top: 6px; }}
+        QGroupBox::title {{ subcontrol-origin: margin; left: 8px; padding: 0 3px; }}
+    """)
+
+
 # ---------------------------------------------------------------- icons
 
 ICON_SIZE = 20
+
+
+class _SkinIcon(QIconEngine):
+    """An icon that draws the current skin's version each time it's painted: the modern drawing,
+    or the Excel 95 pixel icon for the same key (when pixel95 has one)."""
+
+    def __init__(self, key, modern):
+        super().__init__()
+        self.key, self.modern = key, modern
+        self._base, self._made = {}, {}
+
+    def clone(self):
+        return _SkinIcon(self.key, self.modern)
+
+    def _source(self):
+        """(pixmap, is_pixel_art) for the current skin."""
+        if SKIN not in self._base:
+            pm = None
+            if SKIN == "excel95":
+                from . import pixel95
+                pm = pixel95.render(self.key)
+            self._base[SKIN] = (pm, True) if pm is not None else (self.modern(), False)
+        return self._base[SKIN]
+
+    def _make(self, size, mode, scale):
+        key = (SKIN, size.width(), size.height(), getattr(mode, "value", mode), round(scale, 2))
+        if key in self._made:
+            return self._made[key]
+        src, pixel = self._source()
+        w, h = max(1, round(size.width() * scale)), max(1, round(size.height() * scale))
+        out = QPixmap(w, h)
+        out.fill(Qt.transparent)
+        p = QPainter(out)
+        if pixel:  # whole-pixel scaling only, so pixel art stays crisp
+            n = max(1, min(w, h) // src.width())
+            art = src.scaled(src.width() * n, src.height() * n, Qt.KeepAspectRatio, Qt.FastTransformation)
+            if mode == QIcon.Disabled:  # Win95 "etched" look: white shadow under a grey silhouette
+                art_w, art_g = _silhouette(art, QColor("#FFFFFF")), _silhouette(art, QColor("#808080"))
+                x, y = (w - art.width()) // 2, (h - art.height()) // 2
+                p.drawPixmap(x + n, y + n, art_w)
+                p.drawPixmap(x, y, art_g)
+            else:
+                p.drawPixmap((w - art.width()) // 2, (h - art.height()) // 2, art)
+        else:
+            p.setRenderHint(QPainter.SmoothPixmapTransform)
+            if mode == QIcon.Disabled:
+                p.setOpacity(0.35)
+            p.drawPixmap(QRectF(0, 0, w, h), src, QRectF(src.rect()))
+        p.end()
+        out.setDevicePixelRatio(scale)
+        self._made[key] = out
+        return out
+
+    def pixmap(self, size, mode, state):
+        return self._make(size, mode, 1.0)
+
+    def scaledPixmap(self, size, mode, state, scale):
+        return self._make(size, mode, scale)
+
+    def paint(self, painter, rect, mode, state):
+        dev = painter.device()
+        scale = dev.devicePixelRatioF() if dev is not None else 1.0
+        painter.drawPixmap(rect, self._make(rect.size(), mode, scale))
+
+
+def _silhouette(pm, color):
+    out = QPixmap(pm.size())
+    out.fill(Qt.transparent)
+    p = QPainter(out)
+    p.drawPixmap(0, 0, pm)
+    p.setCompositionMode(QPainter.CompositionMode_SourceIn)
+    p.fillRect(out.rect(), color)
+    p.end()
+    return out
+
+
+def glyph_icon(code, color="#333333", size=ICON_SIZE, bar=None, fallback=None):
+    """Icon from a Segoe Fluent/MDL2 glyph; `bar` adds a colored strip at the bottom."""
+    return QIcon(_SkinIcon(("glyph", code, bar, fallback),
+                           lambda: _glyph_pm(code, color, size, bar, fallback)))
+
+
+def text_icon(text, bold=False, italic=False, underline=False, strike=False, color="#333333",
+              size=ICON_SIZE, family="Segoe UI", px=None, bar=None):
+    return QIcon(_SkinIcon(("text", text, bold, italic, underline, strike, color, bar),
+                           lambda: _text_pm(text, bold, italic, underline, strike, color, size, family, px, bar)))
+
+
+def lines_icon(kind, size=ICON_SIZE, color="#333333"):
+    """Alignment / wrap / merge style icons drawn with lines."""
+    return QIcon(_SkinIcon(("lines", kind), lambda: _lines_pm(kind, size, color)))
 
 
 def _canvas(size=ICON_SIZE):
@@ -114,7 +283,7 @@ def _canvas(size=ICON_SIZE):
     return pm, p
 
 
-def glyph_icon(code, color="#333333", size=ICON_SIZE, bar=None, fallback=None):
+def _glyph_pm(code, color="#333333", size=ICON_SIZE, bar=None, fallback=None):
     """Icon from a Segoe Fluent/MDL2 glyph; `bar` adds a colored strip at the bottom."""
     pm, p = _canvas(size)
     fam = icon_font_family()
@@ -135,10 +304,10 @@ def glyph_icon(code, color="#333333", size=ICON_SIZE, bar=None, fallback=None):
     if bar:
         p.fillRect(QRectF(2, size - 4, size - 4, 3.5), QColor(bar))
     p.end()
-    return QIcon(pm)
+    return pm
 
 
-def text_icon(text, bold=False, italic=False, underline=False, strike=False, color="#333333",
+def _text_pm(text, bold=False, italic=False, underline=False, strike=False, color="#333333",
               size=ICON_SIZE, family="Segoe UI", px=None, bar=None):
     pm, p = _canvas(size)
     f = QFont(family)
@@ -153,10 +322,10 @@ def text_icon(text, bold=False, italic=False, underline=False, strike=False, col
     if bar:
         p.fillRect(QRectF(2, size - 4, size - 4, 3.5), QColor(bar))
     p.end()
-    return QIcon(pm)
+    return pm
 
 
-def lines_icon(kind, size=ICON_SIZE, color="#333333"):
+def _lines_pm(kind, size=ICON_SIZE, color="#333333"):
     """Alignment / wrap / merge style icons drawn with lines."""
     pm, p = _canvas(size)
     pen = QPen(QColor(color), 1.6)
@@ -249,7 +418,7 @@ def lines_icon(kind, size=ICON_SIZE, color="#333333"):
         path.closeSubpath()
         p.drawPath(path)
     p.end()
-    return QIcon(pm)
+    return pm
 
 
 def color_square_icon(color, size=14):

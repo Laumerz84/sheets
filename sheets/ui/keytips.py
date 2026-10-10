@@ -97,7 +97,7 @@ KEYTIPS = [
     ("H9", "Decrease decimal", lambda w: w.change_decimals(-1), ""),
     ("HL", "Conditional Formatting", None,
      "Opens Conditional Formatting: highlight rules (greater than, text contains, duplicates), "
-     "top/bottom rules, data bars, color scales and icon sets, plus Manage Rules. Exkel shows "
+     "top/bottom rules, data bars, color scales and icon sets, plus Manage Rules. Ekxel shows "
      "conditional formatting from Excel files but can't create or edit rules yet."),
     ("HT", "Format as Table", None,
      "Turns the range into an Excel Table with a style gallery: banded rows, header filter "
@@ -143,7 +143,7 @@ KEYTIPS = [
     ("HFIR", "Fill right", lambda w: w.fill_dir("right"), ""),
     ("HFIS", "Fill series...", None,
      "Series dialog: fill a linear, growth or date series with a chosen step and stop value "
-     "(Exkel has drag-to-fill series, but not this dialog)."),
+     "(Ekxel has drag-to-fill series, but not this dialog)."),
     ("HEA", "Clear all", lambda w: w.clear_all(), ""),
     ("HEF", "Clear formats", lambda w: w.clear_formats(), ""),
     ("HEC", "Clear contents", lambda w: w.clear_contents(), ""),
@@ -183,7 +183,7 @@ KEYTIPS = [
      "or fixed widths, choosing each new column's data type."),
     ("AVV", "Data Validation", None,
      "Data Validation: restrict what can be typed in cells (whole numbers, decimals, a dropdown "
-     "list, dates, text length, custom formula) with input messages and error alerts. Exkel keeps "
+     "list, dates, text length, custom formula) with input messages and error alerts. Ekxel keeps "
      "validation from Excel files but can't create or enforce it."),
     ("AGG", "Group rows/columns", None,
      "Group: outline rows or columns so they can be collapsed and expanded with +/- buttons."),
@@ -210,7 +210,7 @@ KEYTIPS = [
     ("MH", "Show formulas", lambda w: w.toggle_show_formulas(), ""),
     ("MB", "Calculate now", lambda w: w.recalc_all(), ""),
     ("MMD", "Define name", None,
-     "Define Name: give a cell, range or formula a name (e.g. TaxRate) to use in formulas. Exkel "
+     "Define Name: give a cell, range or formula a name (e.g. TaxRate) to use in formulas. Ekxel "
      "evaluates names from Excel files but can't create them."),
     ("MN", "Name Manager", None, "Name Manager: list, edit and delete the workbook's defined names."),
     ("MP", "Trace precedents", None,
@@ -226,7 +226,7 @@ KEYTIPS = [
     ("NT", "Table", None, "Insert Table: same as Format as Table (banded rows, filters, total row, structured references)."),
     ("NC", "Charts", None,
      "Insert a chart (column, bar, line, pie, scatter, area...) from the selected data, with chart "
-     "titles, axes, legend and styling. Exkel also can't keep charts when re-saving Excel files."),
+     "titles, axes, legend and styling. Ekxel also can't keep charts when re-saving Excel files."),
     ("NI", "Hyperlink", None, "Insert Link (Ctrl+K): make a cell a clickable link to a web page, file or another cell."),
     ("NP", "Pictures", None, "Insert Pictures: place an image on the sheet."),
     ("NSH", "Shapes", None, "Insert Shapes: draw rectangles, arrows, callouts and other shapes."),
@@ -234,7 +234,7 @@ KEYTIPS = [
     ("NU", "Symbol", None, "Insert Symbol: pick a special character to insert."),
     # ---------------- Review
     ("RC", "New comment / note", None,
-     "New Comment/Note: attach a note to a cell (shown by a red corner marker). Exkel keeps notes "
+     "New Comment/Note: attach a note to a cell (shown by a red corner marker). Ekxel keeps notes "
      "from Excel files but can't show or add them."),
     ("RS", "Spelling", None, "Spelling (F7): check spelling in the sheet."),
     ("RPS", "Protect sheet", None, "Protect Sheet: see Home > Format > Protect Sheet."),
@@ -497,7 +497,7 @@ class KeyTipController(QObject):
             if action is None:
                 record_tried(seq)
                 self.win.statusBar().showMessage(
-                    f"{spoken} ({label}) isn't in Exkel yet - added to your feature wishlist "
+                    f"{spoken} ({label}) isn't in Ekxel yet - added to your feature wishlist "
                     f"(Help > Feature Wishlist).", 6000)
                 return
             self.win.statusBar().showMessage(f"{spoken}: {label}", 2500)

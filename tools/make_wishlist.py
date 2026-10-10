@@ -30,7 +30,7 @@ def main():
         "",
         "## Not built yet (wishlist)",
         "",
-        "Pressing one of these KeyTips in Exkel shows \"isn't in Exkel yet\" and counts a try in "
+        "Pressing one of these KeyTips in Ekxel shows \"isn't in Ekxel yet\" and counts a try in "
         "`%APPDATA%\\Sheets\\wishlist-tried.json`. When working on Sheets, Claude asks the user about the "
         "most-tried items (see `CLAUDE.md`). To build one: implement it, give its KEYTIPS entry an action, "
         "re-run this script.",
