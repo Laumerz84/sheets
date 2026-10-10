@@ -33,7 +33,7 @@ Only one copy runs at a time: opening another file hands it to the running app (
 
 | Format | Open | Save |
 | --- | --- | --- |
-| `.xlsx` / `.xlsm` | values, formulas, formatting, merges, widths, freeze panes, filters, conditional formatting (display) | yes; keeps comments, data validation, conditional formatting, defined names of the original file |
+| `.xlsx` / `.xlsm` | values, formulas, formatting, merges, widths, freeze panes, filters, conditional formatting, data validation | yes; keeps comments, data validation, conditional formatting, defined names of the original file |
 | `.xls` (Excel 97-2003) | values + formatting (formulas come in as values) | saves as `.xlsx` |
 | `.csv` / `.tsv` / `.txt` | auto-detects delimiter and encoding; keeps leading zeros and long IDs as text | yes, same delimiter/encoding as opened |
 | HTML tables named `.xls` | yes (common bank/web export) | saves as `.xlsx` |
@@ -49,6 +49,22 @@ arrow-key pointing while typing formulas, F4 for `$`, function autocomplete and 
 paste values/formats/transposed, undo/redo for everything, sort (multi-level), AutoFilter with value
 lists and conditions, find/replace across sheets, remove duplicates, format painter, AutoSum, insert/delete/
 hide rows and columns, autofit, multiple sheets, zoom, status-bar Sum/Average/Count.
+
+Conditional formatting (Home toolbar / Format > Conditional Formatting, Alt H L): highlight rules
+(greater/less than, between, equal, text contains, duplicates), top/bottom and above/below average,
+data bars, color scales, formula rules, New Rule, Clear Rules and Manage Rules (order, Stop If True,
+Applies to). Data validation (Data > Data Validation, Alt A V V): whole number, decimal, list, date,
+time, text length and custom-formula rules, in-cell dropdown lists (click the arrow or Alt+Down),
+input messages and Stop/Warning/Information error alerts on typed entries. Both are saved in xlsx files
+Excel reads.
+
+PivotTables (Insert > PivotTable, Alt N V): pick the data (the table around the cursor by default) and a
+new or existing sheet, then build it in the PivotTable Fields panel - tick fields or drag them into
+Filters, Columns, Rows and Values; right-click for Sum/Count/Average/Max/Min/Distinct Count, filters,
+moving and removing. Subtotals and grand totals, month/weekday names in calendar order, columns autofit.
+Refresh in the panel or Data > Refresh All (Ctrl+Alt+F5) after the source changes. The result is ordinary
+cells, so Excel shows the numbers; the pivot's setup is kept in Ekxel's hidden sheet so Ekxel can
+refresh and change it after reopening (Excel sees a plain table, not an interactive PivotTable).
 
 Keyboard shortcuts follow Excel; Help → Keyboard Shortcuts (F1) lists them.
 

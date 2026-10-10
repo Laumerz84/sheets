@@ -410,6 +410,13 @@ def _lines_pm(kind, size=ICON_SIZE, color="#333333"):
         p.drawLine(QPointF(15, 3), QPointF(15, 17))
         p.drawLine(QPointF(15, 17), QPointF(12.5, 14))
         p.drawLine(QPointF(15, 17), QPointF(17.5, 14))
+    elif kind == "condfmt":  # a little table with highlighted cells, like Excel's button
+        p.setPen(QPen(QColor("#9A9A9A"), 1.0))
+        for i in range(3):
+            for j in range(2):
+                r = QRectF(m + j * w / 2, m + 1 + i * 4.4, w / 2, 4.4)
+                p.setBrush(QColor(("#F8696B", "#FFFFFF", "#FFEB84", "#63BE7B", "#FFFFFF", "#F8696B")[i * 2 + j]))
+                p.drawRect(r)
     elif kind == "filter":
         path = QPainterPath(QPointF(3.5, 4))
         path.lineTo(16.5, 4)

@@ -146,6 +146,7 @@ class Grid(QWidget):
     context_menu_requested = Signal(str, QPoint)  # area: cell/row/col/corner
     fill_requested = Signal(object, object)
     filter_popup_requested = Signal(int, QPoint)
+    dropdown_requested = Signal(int, int, QRect)  # Data Validation list: row, col, the cell's rect
     clear_requested = Signal()
     col_widths_changed = Signal(object, object)   # old, new
     row_heights_changed = Signal(object, object)
@@ -1002,6 +1003,23 @@ class Grid(QWidget):
             p.setBrush(Qt.NoBrush)
             p.drawRect(active_rect.adjusted(0, 0, -2, -2))
 
+        # Data Validation list: Excel's dropdown arrow just right of the active cell
+        self._dd_rect = None
+        if not self.editing:
+            from .. import validation as V
+            dv, _ = V.rule_at(sh, ar, ac)
+            if V.shows_dropdown(dv):
+                h = min(active_rect.height(), 20)
+                B = QRect(active_rect.right() + 2, active_rect.bottom() - h + 1, 17, h)
+                self._dd_rect = B
+                p.setPen(S.HEADER_LINE)
+                p.setBrush(S.HEADER_BG)
+                p.drawRect(B.adjusted(0, 0, -1, -1))
+                cx, cy = B.center().x(), B.center().y()
+                p.setPen(Qt.NoPen)
+                p.setBrush(QColor("#333333"))
+                p.drawPolygon(QPolygon([QPoint(cx - 4, cy - 2), QPoint(cx + 4, cy - 2), QPoint(cx, cy + 2)]))
+
         # fill-handle drag preview
         if self.fill_target:
             R = self._rect_px(self.fill_target, rb, cb)
@@ -1448,6 +1466,11 @@ class Grid(QWidget):
             return  # handled by contextMenuEvent
         if e.button() != Qt.LeftButton:
             return
+        dd = getattr(self, "_dd_rect", None)
+        if dd is not None and dd.contains(pos) and not self.editing:
+            ar, ac = self.sel.active
+            self.dropdown_requested.emit(ar, ac, self.cell_rect(ar, ac))
+            return
 
         if self.editing:
             w = self.edit_widget or self.editor
@@ -1736,6 +1759,12 @@ class Grid(QWidget):
         shift = bool(mods & Qt.ShiftModifier)
         alt = bool(mods & Qt.AltModifier)
         arrows = {Qt.Key_Left: (0, -1), Qt.Key_Right: (0, 1), Qt.Key_Up: (-1, 0), Qt.Key_Down: (1, 0)}
+        if k == Qt.Key_Down and alt and not ctrl:  # Alt+Down: open the cell's validation list
+            from .. import validation as V
+            ar, ac = self.sel.active
+            if V.shows_dropdown(V.rule_at(self.sheet, ar, ac)[0]):
+                self.dropdown_requested.emit(ar, ac, self.cell_rect(ar, ac))
+            return
         if k in arrows:
             dr, dc = arrows[k]
             if ctrl:

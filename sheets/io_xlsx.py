@@ -362,13 +362,19 @@ def _write_validation_and_cf(ws, sh):
             ws.data_validations.dataValidation = dvs
         except AttributeError:
             pass
-    if getattr(sh, "cf_complete", False):
+    if getattr(sh, "cf_complete", True):
         from openpyxl.formatting.formatting import ConditionalFormattingList
         cfl = ConditionalFormattingList()
-        for rule in sh.cond_formats:
-            if rule.xl_rule is not None and rule.rects:
-                cfl.add(" ".join(range_addr(*r) for r in rule.rects), rule.xl_rule)
+        for i, rule in enumerate(r for r in sh.cond_formats if r.xl_rule is not None and r.rects):
+            rule.xl_rule.priority = i + 1  # list order = priority (first wins), as shown
+            cfl.add(" ".join(range_addr(*r) for r in rule.rects), rule.xl_rule)
         ws.conditional_formatting = cfl
+    else:
+        # the file has rules Ekxel couldn't read: keep them as they are and only add Ekxel's own
+        there = {id(x) for cf in ws.conditional_formatting for x in cf.rules}  # earlier saves of this book
+        for rule in sh.cond_formats:
+            if rule.made and rule.rects and id(rule.xl_rule) not in there:
+                ws.conditional_formatting.add(" ".join(range_addr(*r) for r in rule.rects), rule.xl_rule)
 
 
 CONTROLS_SHEET = "_EkxelControls"
@@ -380,16 +386,20 @@ def _write_controls(book, wb):
     import json
     if CONTROLS_SHEET in book.sheetnames:
         book.remove(book[CONTROLS_SHEET])
+    from .pivot import to_json
     rows = []
     for sh in wb.sheets:
         for c in getattr(sh, "controls", []):
             rows.append(json.dumps({"sheet": sh.name, "kind": c["kind"], "place": list(c["place"]),
                                     "link": list(c["link"]), "min": c["min"], "max": c["max"], "step": c["step"]}))
+        for pv in getattr(sh, "pivots", []):
+            rows.append(json.dumps({"sheet": sh.name, "kind": "pivot", "pivot": to_json(pv)}))
     if not rows:
         return
     ws = book.create_sheet(CONTROLS_SHEET)
     ws.sheet_state = "veryHidden"
-    ws["A1"] = "Ekxel form controls (sliders / spin buttons), one JSON object per row. Safe to delete."
+    ws["A1"] = ("Ekxel form controls (sliders / spin buttons) and PivotTable definitions, one JSON object "
+                "per row. Deleting it keeps the numbers but loses the controls and the pivots' field setup.")
     for i, row in enumerate(rows, start=2):
         ws.cell(row=i, column=1, value=row).data_type = "s"
 
@@ -401,9 +411,14 @@ def _read_controls(ws, wb):
         try:
             d = json.loads(row[0])
             sh = wb.get_sheet(d["sheet"])
-            if sh is not None:
-                sh.controls = sh.controls + [make_control(d["kind"], tuple(d["place"]), tuple(d["link"]),
-                                                          d["min"], d["max"], d["step"])]
+            if sh is None:
+                continue
+            if d["kind"] == "pivot":
+                from .pivot import from_json
+                sh.pivots = sh.pivots + [from_json(d["pivot"])]
+                continue
+            sh.controls = sh.controls + [make_control(d["kind"], tuple(d["place"]), tuple(d["link"]),
+                                                      d["min"], d["max"], d["step"])]
         except (TypeError, ValueError, KeyError):
             continue
 

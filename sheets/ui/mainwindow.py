@@ -318,6 +318,10 @@ class MainWindow(QMainWindow):
         self.claude_panel = ClaudePanel(self)
         self.addDockWidget(Qt.RightDockWidgetArea, self.claude_panel)
         self.claude_panel.hide()
+        from .pivot_ui import PivotPanel
+        self.pivot_panel = PivotPanel(self)
+        self.addDockWidget(Qt.RightDockWidgetArea, self.pivot_panel)
+        self.pivot_panel.hide()
         self._build_actions()
         self._build_menus()
         self._build_toolbar()
@@ -486,6 +490,10 @@ class MainWindow(QMainWindow):
         self.a_reapply = A("Re&apply Filters", self.reapply_filters, "Ctrl+Alt+L")
         self.a_filter_value = A("Filter by Selected Cell's Value", self.filter_by_value)
         self.a_dedupe = A("Remove &Duplicates...", self.remove_duplicates)
+        self.a_validation = A("Data &Validation...", self.data_validation_dialog)
+        self.a_pivot = A("&PivotTable...", self.insert_pivot)
+        self.a_refresh_all = A("Refresh &All PivotTables", self.refresh_pivots, "Ctrl+Alt+F5")
+        self.a_cf_manage = A("&Manage Rules...", self.cf_manage_dialog)
         self.a_painter = A("Format Painter", self.start_format_painter, icon=G(S.G_BRUSH, fallback="P"),
                            checkable=True, tip="Format Painter: copy formatting from the selection to the next cells you select")
 
@@ -561,7 +569,8 @@ class MainWindow(QMainWindow):
 
         m = mb.addMenu("&Insert")
         for a in (self.a_ins_rows, self.a_ins_cols, self.a_new_sheet, None, self.a_autosum,
-                  self.a_insert_func, None, self.a_today, self.a_now, None, self.a_ins_slider, self.a_ins_spinner):
+                  self.a_insert_func, None, self.a_today, self.a_now, None, self.a_pivot, None,
+                  self.a_ins_slider, self.a_ins_spinner):
             m.addSeparator() if a is None else m.addAction(a)
 
         m = mb.addMenu("F&ormat")
@@ -580,6 +589,8 @@ class MainWindow(QMainWindow):
         mm = m.addMenu("&Merge")
         for a in (self.a_merge, self.a_merge_across, self.a_merge_cells, self.a_unmerge):
             mm.addAction(a)
+        from . import rules_ui
+        rules_ui.build_cf_menu(self, m.addMenu("Con&ditional Formatting"))
         m.addSeparator()
         rm = m.addMenu("&Rows")
         for a in (self.a_row_height, self.a_autofit_rows, self.a_hide_rows, self.a_unhide_rows):
@@ -595,7 +606,8 @@ class MainWindow(QMainWindow):
 
         m = mb.addMenu("&Data")
         for a in (self.a_sort_az, self.a_sort_za, self.a_sort, None, self.a_filter, self.a_clear_filter,
-                  self.a_reapply, None, self.a_dedupe, None, self.a_recalc):
+                  self.a_reapply, None, self.a_dedupe, self.a_validation, None, self.a_pivot,
+                  self.a_refresh_all, None, self.a_recalc):
             m.addSeparator() if a is None else m.addAction(a)
 
         m = mb.addMenu("&Help")
@@ -716,6 +728,11 @@ class MainWindow(QMainWindow):
                   self.a_format_cells):
             fmenu.addSeparator() if a is None else fmenu.addAction(a)
         tb.addWidget(self._tool_button(S.glyph_icon("", fallback="F"), "Format rows, columns and cells", fmenu))
+        from . import rules_ui
+        self.cf_menu = QMenu(self)
+        rules_ui.build_cf_menu(self, self.cf_menu)
+        self.cf_btn = self._tool_button(S.lines_icon("condfmt"), "Conditional Formatting", self.cf_menu)
+        tb.addWidget(self.cf_btn)
         tb.addSeparator()
         sm = QMenu(self)
         for name in ("SUM", "AVERAGE", "COUNT", "MAX", "MIN"):
@@ -861,6 +878,8 @@ class MainWindow(QMainWindow):
         g.context_menu_requested.connect(self._context_menu)
         g.fill_requested.connect(self.fill_drag)
         g.filter_popup_requested.connect(self.show_filter_popup)
+        g.dropdown_requested.connect(self.show_validation_list)
+        g.scrolled.connect(self._show_input_message)
         g.clear_requested.connect(self.clear_contents)
         g.col_widths_changed.connect(lambda o, n: self._push_meta({"col_widths": self._dict_pair(self.sheet.col_widths, o, n)}, "Column Width"))
         g.row_heights_changed.connect(lambda o, n: self._push_meta({"row_heights": self._dict_pair(self.sheet.row_heights, o, n)}, "Row Height"))
@@ -1033,6 +1052,8 @@ class MainWindow(QMainWindow):
             self.fbar.set_text(ops.edit_text_for(self.sheet, r, c))
             self.fbar.hide_popups()
         self._sync_format_controls()
+        self._show_input_message()
+        self._sync_pivot_panel()
         self.stats_timer.start()
 
     def _sync_format_controls(self):
@@ -1176,6 +1197,12 @@ class MainWindow(QMainWindow):
     # ================================================================ commits
     def commit_cell(self, r, c, text, fill_selection):
         sh = self.sheet
+        if self.pivot_at(sh, r, c) is not None:
+            self.warn("You can't change this part of a PivotTable. Change its source data and click Refresh, "
+                      "or rearrange it in the PivotTable Fields panel.")
+            return
+        if not self._validate_entry(r, c, text):
+            return
         states = {}
         if fill_selection:
             for rect in self.sel_rects():
@@ -1199,6 +1226,249 @@ class MainWindow(QMainWindow):
         self._push_states(states, "Typing")
         self._push_meta({"col_widths": (dict(sh.col_widths), {**sh.col_widths, c: widen})}, "Typing")
         self.undo.endMacro()
+
+    # ================================================================ PivotTables
+    def warn(self, text):
+        QMessageBox.warning(self, APP_NAME, text)
+
+    def pivot_at(self, sh, r, c):
+        from ..pivot import contains
+        if sh is None:
+            return None
+        return next((p for p in sh.pivots if contains(p.get("out"), r, c)), None)
+
+    def _pivot_states(self, pv):
+        """Cell states that redraw `pv` (clearing where it was last drawn), and pv with its new extent."""
+        from .. import pivot as P
+        cells, size, err = P.build(self.wb, pv)
+        if err:
+            return None, None, err
+        states = {}
+        if pv.get("out"):
+            r1, c1, r2, c2 = pv["out"]
+            for r in range(r1, r2 + 1):
+                for c in range(c1, c2 + 1):
+                    states[key(r, c)] = (None, DEFAULT_STYLE)
+        ar, ac = pv["anchor"]
+        for (dr, dc), (v, st) in cells.items():
+            states[key(ar + dr, ac + dc)] = (None if v in (None, "") else ("v", v), st)
+        return states, P.changed(pv, out=P.out_rect(pv, size)), None
+
+    def change_pivot(self, sheet, old, new, text):
+        """Redraw a pivot with definition `new` (replacing `old`; None = a new pivot), as one undo step."""
+        from ..pivot import contains
+        states, new, err = self._pivot_states(new)
+        if err:
+            self.warn(err)
+            return None
+        o = new["out"]
+        if (o[2] - o[0] + 1) * (o[3] - o[1] + 1) > 1_000_000:
+            self.warn("That PivotTable would be too big (over a million cells). Use fewer row or column fields.")
+            return None
+        others = [p for p in sheet.pivots if p is not old]
+        if any(p.get("out") and not (p["out"][2] < o[0] or p["out"][0] > o[2] or p["out"][3] < o[1]
+                                     or p["out"][1] > o[3]) for p in others):
+            self.warn("A PivotTable can't overlap another PivotTable. Move one of them first.")
+            return None
+        busy = [(r, c) for r in range(o[0], min(o[2], sheet.max_row) + 1)
+                for c in range(o[1], min(o[3], sheet.max_col) + 1)
+                if sheet.has_content(r, c) and not (old is not None and contains(old.get("out"), r, c))]
+        if busy and QMessageBox.question(
+                self, APP_NAME, f"There's already data in {addr(*busy[0])}"
+                f"{' and other cells' if len(busy) > 1 else ''}. Do you want to replace it?") != QMessageBox.Yes:
+            return None
+        pivots = [new if p is old else p for p in sheet.pivots] + ([] if old is not None else [new])
+        self.undo.beginMacro(text)
+        self._push_states(states, text, sheet=sheet)
+        self.undo.push(MetaCommand(self, sheet, {"pivots": (list(sheet.pivots), pivots)}, text, False))
+        has_fields = new["rows"] or new["cols"] or new["values"] or new["filter_fields"]
+        if has_fields and sheet is self.sheet:  # Excel autofits a pivot's columns on every update
+            self.autofit_cols(range(o[1], o[3] + 1))
+        self.undo.endMacro()
+        if sheet is self.sheet:
+            self._sync_pivot_panel()
+        return new
+
+    def insert_pivot(self):
+        """Insert > PivotTable: pick the source (the table around the cursor by default) and where it goes."""
+        from .. import ops as _ops, pivot as P
+        from .pivot_ui import CreatePivotDialog
+        self._prep()
+        sh = self.sheet
+        r, c = self.grid.sel.active
+        rects = self.grid.selected_rects()
+        rect = rects[0] if len(rects) == 1 and (rects[0][0] != rects[0][2] or rects[0][1] != rects[0][3]) \
+            else _ops.current_region(sh, r, c)
+        rect = (rect[0], rect[1], min(rect[2], max(sh.max_row, rect[0])), min(rect[3], max(sh.max_col, rect[1])))
+        d = CreatePivotDialog(self, sh.name, rect)
+        if d.exec() != QDialog.Accepted:
+            return
+        src_sheet, src_rect, dest = d.result
+        n = sum(len(s.pivots) for s in self.wb.sheets) + 1
+        self.undo.beginMacro("Insert PivotTable")
+        if dest is None:
+            self.add_sheet()  # Excel puts it at A3 of a new sheet
+            target, anchor = self.sheet, (2, 0)
+        else:
+            target, anchor = self.wb.get_sheet(dest[0]), (dest[1], dest[2])
+            self.show_sheet(target)
+        made = self.change_pivot(target, None, P.new(f"PivotTable{n}", src_sheet, src_rect, anchor),
+                                 "Insert PivotTable")
+        self.undo.endMacro()
+        if made is not None:
+            self.grid.set_active(*anchor)
+            self._sync_pivot_panel()
+
+    def refresh_pivot(self, sheet, pv):
+        if sheet is not None and pv is not None:
+            self.change_pivot(sheet, pv, pv, "Refresh PivotTable")
+
+    def refresh_pivots(self):
+        """Data > Refresh All (Ctrl+Alt+F5): re-read the source of every PivotTable."""
+        self._prep()
+        todo = [(s, p) for s in self.wb.sheets for p in s.pivots]
+        if not todo:
+            self.statusBar().showMessage("There are no PivotTables in this workbook.", 4000)
+            return
+        self.undo.beginMacro("Refresh All")
+        for s, p in todo:
+            self.change_pivot(s, p, p, "Refresh All")
+        self.undo.endMacro()
+        self.statusBar().showMessage(f"Refreshed {len(todo)} PivotTable{'s' if len(todo) > 1 else ''}.", 4000)
+
+    def _sync_pivot_panel(self):
+        """Show the field list while the active cell is inside a PivotTable (like Excel)."""
+        panel = getattr(self, "pivot_panel", None)
+        if panel is None or self.sheet is None:
+            return
+        pv = self.pivot_at(self.sheet, *self.grid.sel.active)
+        if pv is not None:
+            panel.show_pivot(self.sheet, pv)
+        elif panel.pv is not None:
+            panel.pv = None
+            panel.hide()
+
+    # ================================================================ conditional formatting / validation
+    def set_cond_formats(self, rules, text):
+        """Replace the sheet's conditional formatting rules (first = highest priority), undoably."""
+        sh = self.sheet
+
+        def action():
+            sh.cond_formats = list(rules)
+        self.undo.push(SnapshotCommand(self, sh, text, action, sheets=[sh]))
+
+    def add_cond_format(self, rule, text):
+        """A new rule goes on top, like Excel."""
+        self.set_cond_formats([rule] + list(self.sheet.cond_formats), text)
+
+    def set_validations(self, entries, text):
+        sh = self.sheet
+
+        def action():
+            sh.xl_dv = [list(e) for e in entries]
+        self.undo.push(SnapshotCommand(self, sh, text, action, sheets=[sh]))
+        self._show_input_message()
+
+    def show_cf_menu(self):
+        """Alt H L: drop the Conditional Formatting menu from its toolbar button."""
+        b = getattr(self, "cf_btn", None)
+        pos = b.mapToGlobal(b.rect().bottomLeft()) if b is not None and b.isVisible() else QCursor.pos()
+        self.cf_menu.exec(pos)
+
+    def cf_manage_dialog(self):
+        from .rules_ui import ManageRulesDialog
+        self._prep()
+        ManageRulesDialog(self).exec()
+
+    def data_validation_dialog(self):
+        from .rules_ui import validation_dialog
+        self._prep()
+        validation_dialog(self)
+
+    def show_validation_list(self, r, c, rect):
+        from .rules_ui import show_list
+        show_list(self, r, c, rect)
+
+    def _validate_entry(self, r, c, text):
+        """Data Validation on typing: True to store `text` in (r, c). Like Excel, only typed entries
+        are checked (not pastes), and a rule with its error alert turned off accepts anything."""
+        from .. import validation as V
+        sh = self.sheet
+        dv, rects = V.rule_at(sh, r, c)
+        if dv is None or not dv.showErrorMessage or (dv.type or "any") == "any":
+            return True
+        if text.startswith("="):
+            try:
+                from ..formula import parse
+                value = sh.wb.evaluator.run(parse(text), (sh, r, c))
+            except Exception:  # noqa: BLE001 - an unparsable formula is checked as text
+                value = text
+        else:
+            st = ops.input_state(sh, r, c, text)
+            value = st[0][1] if st[0] is not None and st[0][0] == "v" else (None if not text else text)
+        if V.check(sh, dv, rects, r, c, value):
+            return True
+        title, msg = V.describe_failure(dv)
+        style = dv.errorStyle or "stop"
+        box = QMessageBox(self)
+        box.setWindowTitle(title)
+        if style == "warning":
+            box.setIcon(QMessageBox.Warning)
+            box.setText(msg + "\n\nContinue?")
+            box.setStandardButtons(QMessageBox.Yes | QMessageBox.No | QMessageBox.Cancel)
+            box.setDefaultButton(QMessageBox.No)
+        elif style == "information":
+            box.setIcon(QMessageBox.Information)
+            box.setText(msg)
+            box.setStandardButtons(QMessageBox.Ok | QMessageBox.Cancel)
+        else:
+            box.setIcon(QMessageBox.Critical)
+            box.setText(msg)
+            box.setStandardButtons(QMessageBox.Retry | QMessageBox.Cancel)
+            box.setDefaultButton(QMessageBox.Retry)
+        answer = box.exec()
+        if answer in (QMessageBox.Yes, QMessageBox.Ok):
+            return True
+        if answer in (QMessageBox.Retry, QMessageBox.No):  # back into the cell with what was typed
+            def again():
+                self.grid.set_active(r, c)
+                self.grid.begin_edit(text, mode="edit")
+            QTimer.singleShot(0, again)
+        return False
+
+    def _show_input_message(self):
+        """Data Validation's input message: a small yellow note beside the selected cell."""
+        from .. import validation as V
+        tip = getattr(self, "_dv_tip", None)
+        sh, g = self.sheet, self.grid
+        dv = None
+        if sh is not None and g.sheet is sh:
+            dv, _ = V.rule_at(sh, *g.sel.active)
+        if dv is None or not dv.showInputMessage or not (dv.promptTitle or dv.prompt):
+            if tip is not None:
+                tip.hide()
+            return
+        if tip is None:
+            tip = self._dv_tip = QLabel(g)
+            tip.setWordWrap(True)
+            tip.setMaximumWidth(260)
+            tip.setAttribute(Qt.WA_TransparentForMouseEvents)
+            tip.setStyleSheet("background: #FFFFE1; color: #000000; border: 1px solid #767676; padding: 4px 6px;")
+        title = (dv.promptTitle or "").replace("&", "&amp;").replace("<", "&lt;")
+        body = (dv.prompt or "").replace("&", "&amp;").replace("<", "&lt;").replace("\n", "<br>")
+        tip.setText((f"<b>{title}</b><br>" if title else "") + body)
+        tip.adjustSize()
+        R = g.cell_rect(*g.sel.active)
+        x, y = R.left() + 12, R.bottom() + 6
+        if not g.rect().contains(R.center()):
+            tip.hide()
+            return
+        x = min(x, max(0, g.width() - tip.width() - 4))
+        if y + tip.height() > g.height():
+            y = max(0, R.top() - tip.height() - 6)
+        tip.move(x, y)
+        tip.show()
+        tip.raise_()
 
     def _auto_widen(self, r, c, state):
         """Excel widens a default-width column when a typed number/date doesn't fit."""

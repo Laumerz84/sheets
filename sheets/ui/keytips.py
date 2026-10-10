@@ -11,9 +11,8 @@ import os
 
 from ..osinfo import UI_FONT, UI_PT, settings_dir
 from PySide6.QtCore import QEvent, QObject, QPoint, Qt, QTimer
-from PySide6.QtWidgets import (QAbstractSpinBox, QApplication, QComboBox, QFrame,
-                               QInputDialog, QLabel, QLineEdit, QPlainTextEdit,
-                               QTextEdit, QVBoxLayout, QWidget)
+from PySide6.QtWidgets import (QApplication, QComboBox, QFrame, QInputDialog, QLabel,
+                               QMenuBar, QVBoxLayout, QWidget)
 
 
 # ---------------------------------------------------------------- small actions
@@ -96,10 +95,7 @@ KEYTIPS = [
     ("HK", "Comma style", lambda w: w.apply_numfmt("#,##0.00"), ""),
     ("H0", "Increase decimal", lambda w: w.change_decimals(1), ""),
     ("H9", "Decrease decimal", lambda w: w.change_decimals(-1), ""),
-    ("HL", "Conditional Formatting", None,
-     "Opens Conditional Formatting: highlight rules (greater than, text contains, duplicates), "
-     "top/bottom rules, data bars, color scales and icon sets, plus Manage Rules. Ekxel shows "
-     "conditional formatting from Excel files but can't create or edit rules yet."),
+    ("HL", "Conditional Formatting", lambda w: w.show_cf_menu(), ""),
     ("HT", "Format as Table", None,
      "Turns the range into an Excel Table with a style gallery: banded rows, header filter "
      "buttons, a total row, and structured references like Table1[Sales]."),
@@ -182,10 +178,8 @@ KEYTIPS = [
     ("AE", "Text to Columns", None,
      "Text to Columns wizard: split one column into several by a delimiter (comma, tab, space...) "
      "or fixed widths, choosing each new column's data type."),
-    ("AVV", "Data Validation", None,
-     "Data Validation: restrict what can be typed in cells (whole numbers, decimals, a dropdown "
-     "list, dates, text length, custom formula) with input messages and error alerts. Ekxel keeps "
-     "validation from Excel files but can't create or enforce it."),
+    ("AVV", "Data Validation", lambda w: w.data_validation_dialog(), ""),
+    ("ARA", "Refresh All", lambda w: w.refresh_pivots(), ""),
     ("AGG", "Group rows/columns", None,
      "Group: outline rows or columns so they can be collapsed and expanded with +/- buttons."),
     ("AUU", "Ungroup", None, "Ungroup: remove an outline group."),
@@ -221,9 +215,7 @@ KEYTIPS = [
     ("MV", "Evaluate formula", None,
      "Evaluate Formula: step through a formula's calculation one part at a time."),
     # ---------------- Insert
-    ("NV", "PivotTable", None,
-     "Insert PivotTable: summarize a table by dragging fields into Rows, Columns, Values and "
-     "Filters (sum/count/average...), with grouping and refresh."),
+    ("NV", "PivotTable", lambda w: w.insert_pivot(), ""),
     ("NT", "Table", None, "Insert Table: same as Format as Table (banded rows, filters, total row, structured references)."),
     ("NC", "Charts", None,
      "Insert a chart (column, bar, line, pie, scatter, area...) from the selected data, with chart "
@@ -273,7 +265,7 @@ KEYTIPS = [
     ("ORU", "Unhide rows (2003)", lambda w: w.hide_rows_cols("row", False), ""),
     ("OHR", "Rename sheet (2003)", lambda w: w.rename_sheet(), ""),
     ("OE", "Format Cells (2003)", lambda w: w.format_cells(), ""),
-    ("OD", "Conditional Formatting (2003)", None, "Same as Home > Conditional Formatting."),
+    ("OD", "Conditional Formatting (2003)", lambda w: w.cf_manage_dialog(), ""),
     ("IR", "Insert rows (2003)", lambda w: w.insert_rows_cols("row"), ""),
     ("IC", "Insert columns (2003)", lambda w: w.insert_rows_cols("col"), ""),
     ("IW", "Insert worksheet (2003)", lambda w: w.add_sheet(), ""),
@@ -289,7 +281,7 @@ GROUPS = {
     "H": "Home", "HF": "Font, Find, Fill, Format Painter", "HFD": "Find & Select", "HFI": "Fill",
     "HA": "Alignment", "HB": "Borders", "HM": "Merge", "HI": "Insert", "HD": "Delete", "HO": "Format",
     "HOU": "Hide & Unhide", "HU": "AutoSum", "HE": "Clear", "HS": "Sort & Filter", "HV": "Paste",
-    "A": "Data", "AS": "Sort", "AV": "Data Validation", "AG": "Group", "AU": "Ungroup", "AW": "What-If",
+    "A": "Data", "AS": "Sort", "AV": "Data Validation", "AR": "Refresh All", "AG": "Group", "AU": "Ungroup", "AW": "What-If",
     "AF": "Flash Fill", "W": "View", "WF": "Freeze Panes", "WV": "Show", "M": "Formulas", "MU": "AutoSum",
     "MM": "Define Name", "N": "Insert", "NS": "Shapes", "R": "Review", "RP": "Protect", "P": "Page Layout",
     "F": "File", "E": "Edit (Excel 2003)", "ES": "Paste Special", "EI": "Fill", "EA": "Clear",
@@ -344,9 +336,6 @@ def next_options(prefix):
     return out
 
 
-_TEXT_INPUTS = (QLineEdit, QPlainTextEdit, QTextEdit, QAbstractSpinBox)
-
-
 class KeyTipHints(QFrame):
     def __init__(self, win):
         super().__init__(win, Qt.ToolTip | Qt.FramelessWindowHint)
@@ -384,6 +373,7 @@ class KeyTipController(QObject):
         self.buf = ""
         self.alt_down = False
         self.alt_used = False
+        self._return_to = None
         self.hints = KeyTipHints(win)
         self._timeout = QTimer(self)
         self._timeout.setSingleShot(True)
@@ -395,10 +385,24 @@ class KeyTipController(QObject):
         return isinstance(obj, QWidget) and obj.window() is self.win
 
     def _typing(self):
+        """Only typing into a cell (in-cell editor or formula bar) keeps Alt for itself. In other boxes
+        (Claude chat, name box, font box) bare Alt does nothing useful, so KeyTips work there too."""
+        from .editor import CellEditor
+        return self.win.grid.editing or isinstance(QApplication.focusWidget(), CellEditor)
+
+    def _remember_focus(self):
         fw = QApplication.focusWidget()
-        if isinstance(fw, _TEXT_INPUTS):
-            return True
-        return isinstance(fw, QComboBox) and fw.isEditable()
+        if fw is not None and not isinstance(fw, QMenuBar):
+            self._return_to = fw
+
+    def _restore_focus(self):
+        # Windows' Alt also puts the menu bar in keyboard mode and gives it focus; don't leave it there
+        if isinstance(QApplication.focusWidget(), QMenuBar):
+            target = self._return_to if self._return_to is not None else self.win.grid
+            try:
+                target.setFocus()
+            except RuntimeError:  # that widget was deleted meanwhile
+                self.win.grid.setFocus()
 
     def eventFilter(self, obj, ev):
         t = ev.type()
@@ -431,6 +435,7 @@ class KeyTipController(QObject):
                 else:
                     self.alt_down = True
                     self.alt_used = False
+                    self._remember_focus()
                 return True
             if self.active:
                 if key == Qt.Key_Escape:
@@ -473,6 +478,7 @@ class KeyTipController(QObject):
         self.buf = ""
         self.hints.hide()
         self._timeout.stop()
+        self._restore_focus()
 
     def back(self):
         if self.buf:
@@ -502,6 +508,7 @@ class KeyTipController(QObject):
                     f"(Help > Feature Wishlist).", 6000)
                 return
             self.win.statusBar().showMessage(f"{spoken}: {label}", 2500)
+            self.win.grid.setFocus()  # commands act on the sheet, even when started from the Claude box
             QTimer.singleShot(0, lambda: action(self.win))
             return
         if next_options(seq):

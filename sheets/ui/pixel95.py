@@ -439,6 +439,23 @@ ART = {
         ................
         ................
         ................""",
+    "condfmt": """
+        ................
+        .kkkkkkkkkkkkkk.
+        .krrrrrrkwwwwwk.
+        .krrrrrrkwwwwwk.
+        .kkkkkkkkkkkkkk.
+        .kwwwwwwkyyyyyk.
+        .kwwwwwwkyyyyyk.
+        .kkkkkkkkkkkkkk.
+        .kGGGGGGkwwwwwk.
+        .kGGGGGGkwwwwwk.
+        .kkkkkkkkkkkkkk.
+        .kwwwwwwkrrrrrk.
+        .kwwwwwwkrrrrrk.
+        .kkkkkkkkkkkkkk.
+        ................
+        ................""",
     "claude": """
         ................
         .......r........
@@ -463,7 +480,8 @@ GLYPHS = {S.G_NEW: "new", S.G_OPEN: "open", S.G_SAVE: "save", S.G_UNDO: "undo", 
           S.G_CUT: "cut", S.G_COPY: "copy", S.G_PASTE: "paste", S.G_FIND: "find", S.G_FONTCOLOR: "fontcolor",
           S.G_FILL: "fill", S.G_CLEAR: "clear", S.G_ZOOMIN: "zoomin", S.G_ZOOMOUT: "zoomout", S.G_ADD: "add",
           S.G_DELETE: "delete", S.G_BRUSH: "brush"}
-LINES = {"wrap", "merge", "borders", "freeze", "insert_row", "delete_row", "sort_az", "sort_za", "filter"}
+LINES = {"wrap", "merge", "borders", "freeze", "insert_row", "delete_row", "sort_az", "sort_za", "filter",
+         "condfmt"}
 
 _cache = {}
 

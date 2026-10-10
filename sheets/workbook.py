@@ -103,12 +103,14 @@ class Sheet:
         self._fcols = {}          # col -> sorted rows having formulas
         self.xl = None            # backing openpyxl worksheet (xlsx round-trip)
         self.tab_color = None
-        self.cond_formats = []    # condfmt.CFRule list (displayed; written back to xlsx)
+        self.cond_formats = []    # condfmt.CFRule list, first = highest priority (written back to xlsx)
+        self.cf_complete = True   # False when a loaded file had rules Ekxel couldn't read (left as they were)
         # xlsx round-trip data that moves with rows/cols:
         self.notes = {}           # key -> (openpyxl Comment, Hyperlink)
         self.xl_dv = []           # [[openpyxl DataValidation, [rects]]]
         self.xl_styles = {}       # key -> (Style it converted to, original StyleArray)
         self.controls = []        # form controls (sliders/spinners), see ui/controls.py
+        self.pivots = []          # PivotTables drawn on this sheet (dicts, see pivot.py)
         self.show_grid = True
         self.zoom = 1.0
 
@@ -364,6 +366,12 @@ class Sheet:
             if self.autofilter is None:
                 self.filters = {}
                 self.filter_hidden = set()
+        # PivotTables: their source range (on any sheet) and, for pivots on this sheet, their position
+        from .pivot import remapped
+        for other in self.wb.sheets:
+            if other.pivots and (other is self or any(p["source"] == self.name for p in other.pivots)):
+                other.pivots = [x for x in (remapped(p, self.name, remap_rect, other is self)
+                                            for p in other.pivots) if x]
         self._rebuild_fcols()
         self.recompute_extent()
 
@@ -464,6 +472,9 @@ class Workbook:
                 if t != f.text:
                     s.formulas[k] = Formula(t, f.fallback)
         sh.name = new
+        for s in self.sheets:  # PivotTables reading from the renamed sheet
+            if any(p["source"] == old for p in s.pivots):
+                s.pivots = [dict(p, source=new) if p["source"] == old else p for p in s.pivots]
         for name, text in list(self.names.items()):
             self.names[name] = rename_sheet("=" + text, old, new)[1:]
         self.rebuild_dependencies()
@@ -701,6 +712,7 @@ class Workbook:
             "xl_dv": [(dv, list(rects)) for dv, rects in sh.xl_dv],
             "cond_formats": [(rule, list(rule.rects)) for rule in sh.cond_formats],
             "controls": list(sh.controls),
+            "pivots": list(sh.pivots),
         }
 
     def snapshot(self, sheets=None):
@@ -713,7 +725,8 @@ class Workbook:
             if sh in full:
                 snap["full"][sh] = self.snapshot_sheet(sh)
             else:
-                snap["ftext"][sh] = ({k: (f.text, f.fallback) for k, f in sh.formulas.items()}, sh.name)
+                snap["ftext"][sh] = ({k: (f.text, f.fallback) for k, f in sh.formulas.items()}, sh.name,
+                                     list(sh.pivots))  # a pivot elsewhere may read from a changed sheet
         return snap
 
     def restore(self, snap):
@@ -743,10 +756,13 @@ class Workbook:
                 rule._asts = {}
             sh.cond_formats = [rule for rule, _ in d["cond_formats"]]
             sh.controls = list(d.get("controls", []))
+            sh.pivots = list(d.get("pivots", []))
             sh.recompute_extent()
-        for sh, (ft, name) in snap["ftext"].items():
+        for sh, (ft, name, *rest) in snap["ftext"].items():
             sh.formulas = {k: Formula(t, fb) for k, (t, fb) in ft.items()}
             sh.name = name
+            if rest:
+                sh.pivots = list(rest[0])
         self.active = min(snap["active"], len(self.sheets) - 1)
         self.names = dict(snap.get("names", self.names))
         self._changed = []
