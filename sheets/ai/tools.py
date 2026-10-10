@@ -128,6 +128,9 @@ class WorkbookTools:
                 info["frozen"] = {"rows": sh.freeze[0], "columns": sh.freeze[1]}
             if sh.autofilter:
                 info["filter_range"] = range_addr(*sh.autofilter)
+            if getattr(sh, "controls", None):
+                from ..ui.controls import describe
+                info["controls"] = [describe(c) for c in sh.controls]
             out.append(info)
         g = self.win.grid
         r, c = g.sel.active
@@ -357,6 +360,32 @@ class WorkbookTools:
                 self.win.show_sheet(current)  # keep the user where they were
         return {"columns": range_addr(0, rect[1], MAX_ROWS - 1, rect[3]), "width": width or "auto"}
 
+    def add_control(self, kind, linked_cell, place=None, min=0, max=100, step=1, sheet=None):
+        """A slider ('scrollbar') or 'spinner' over `place` that drives the number in linked_cell."""
+        from ..ui.commands import MetaCommand
+        from ..ui.controls import default_place, describe, make_control
+        sh, link_rect = self._range(linked_cell, sheet)
+        if link_rect[0] != link_rect[2] or link_rect[1] != link_rect[3]:
+            raise ToolError("linked_cell must be a single cell, e.g. 'B4'.")
+        link = (link_rect[0], link_rect[1])
+        if place:
+            sh2, prect = self._range(place, sh.name)
+            if sh2 is not sh:
+                raise ToolError("The control must be on the same sheet as its linked cell.")
+            if prect[2] >= MAX_ROWS - 1 or prect[3] >= MAX_COLS - 1:
+                raise ToolError("place must be a cell or small range like 'C4:F4'.")
+        else:
+            prect = default_place(kind, link)
+        try:
+            ctl = make_control(kind, prect, link, min, max, step)
+        except ValueError as e:
+            raise ToolError(str(e))
+        self._writing()
+        self.win.undo.push(MetaCommand(self.win, sh, {"controls": (list(sh.controls), sh.controls + [ctl])},
+                                       "Claude", relayout=False))
+        self.win.grid.update()
+        return {"added": describe(ctl), "sheet": sh.name}
+
     def select_range(self, range, sheet=None):
         sh, rect = self._range(range, sheet)
         self.win.show_sheet(sh)
@@ -388,7 +417,7 @@ class WorkbookTools:
 
 TOOLS = {n: n for n in ("workbook_info", "read_range", "write_range", "format_range", "clear_range",
                         "add_sheet", "sort_range", "insert_or_delete", "find", "set_column_width",
-                        "select_range")}
+                        "select_range", "add_control")}
 
 _NAMED = {"red": "#FF0000", "green": "#00B050", "blue": "#0070C0", "yellow": "#FFFF00", "orange": "#FFC000",
           "purple": "#7030A0", "black": "#000000", "white": "#FFFFFF", "gray": "#808080", "grey": "#808080",

@@ -108,6 +108,7 @@ class Sheet:
         self.notes = {}           # key -> (openpyxl Comment, Hyperlink)
         self.xl_dv = []           # [[openpyxl DataValidation, [rects]]]
         self.xl_styles = {}       # key -> (Style it converted to, original StyleArray)
+        self.controls = []        # form controls (sliders/spinners), see ui/controls.py
         self.show_grid = True
         self.zoom = 1.0
 
@@ -353,6 +354,11 @@ class Sheet:
         self.cond_formats = [r for r in self.cond_formats if r.rects]
         self.xl_dv = [[dv, remap_rects(rects)] for dv, rects in self.xl_dv]
         self.xl_dv = [e for e in self.xl_dv if e[1]]
+        if self.controls:
+            from .ui.controls import remap as remap_control
+            same = lambda x: x
+            mr, mc = (move, same) if axis == "row" else (same, move)
+            self.controls = [c for c in (remap_control(c, mr, mc, remap_rect) for c in self.controls) if c]
         if self.autofilter:
             self.autofilter = remap_rect(self.autofilter)
             if self.autofilter is None:
@@ -694,6 +700,7 @@ class Workbook:
             "xl_styles": dict(sh.xl_styles),
             "xl_dv": [(dv, list(rects)) for dv, rects in sh.xl_dv],
             "cond_formats": [(rule, list(rule.rects)) for rule in sh.cond_formats],
+            "controls": list(sh.controls),
         }
 
     def snapshot(self, sheets=None):
@@ -735,6 +742,7 @@ class Workbook:
                 rule.rects = list(rects)
                 rule._asts = {}
             sh.cond_formats = [rule for rule, _ in d["cond_formats"]]
+            sh.controls = list(d.get("controls", []))
             sh.recompute_extent()
         for sh, (ft, name) in snap["ftext"].items():
             sh.formulas = {k: Formula(t, fb) for k, (t, fb) in ft.items()}

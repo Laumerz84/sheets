@@ -23,7 +23,9 @@ SYSTEM = (
     "You are Claude, working inside Ekxel, a desktop spreadsheet app. The user is looking at the "
     "workbook; act on it only through the sheets tools (you have no file, shell or web access). "
     "Each message starts with a [Ekxel: ...] line giving the active sheet and selection; 'this', "
-    "'here' or 'the selection' mean that range. Read cells before changing them, use formulas "
+    "'here' or 'the selection' mean that range. When the selection is small, a [Selected cells: ...] "
+    "line follows with its contents (shown value, and the formula if any), so you needn't re-read "
+    "them. Read other cells before changing them, use formulas "
     "(not hard-coded results) when values depend on other cells, check formula_errors after "
     "writing, and don't delete or overwrite data the user didn't ask about. Keep replies short "
     "and plain: say what you did with cell addresses, or answer the question. All your changes "
@@ -197,6 +199,9 @@ class ClaudePanel(QDockWidget):
         sel = ", ".join(_rng(g.sheet, rc) for rc in g.sel.rects)
         context = (f"[Ekxel: file {os.path.basename(win.wb.path) if win.wb.path else 'unsaved new workbook'}, "
                    f"active sheet '{g.sheet.name}', selection {sel}]")
+        contents = selection_contents(g.sheet, g.sel.rects)
+        if contents:
+            context += "\n" + contents
         args = cmd + ["-p", "--output-format", "stream-json", "--verbose", "--include-partial-messages",
                       "--mcp-config", cfg, "--strict-mcp-config", "--tools", "",
                       "--allowedTools", "mcp__sheets", "--append-system-prompt", SYSTEM,
@@ -351,6 +356,38 @@ class _Input(QPlainTextEdit):
             self.submit.emit()
             return
         super().keyPressEvent(e)
+
+
+MAX_CONTEXT_CELLS = 200
+MAX_CONTEXT_CHARS = 6000
+
+
+def selection_contents(sheet, rects):
+    """Compact listing of the selected cells' contents for the prompt, or '' when the
+    selection is empty or too big (Claude then reads what it needs)."""
+    from ..ops import display_text
+    from ..refs import MAX_COLS, MAX_ROWS, addr
+    cells = 0
+    for r1, c1, r2, c2 in rects:
+        if r2 >= MAX_ROWS - 1 or c2 >= MAX_COLS - 1:
+            return ""  # whole rows/columns
+        cells += (r2 - r1 + 1) * (c2 - c1 + 1)
+    if cells > MAX_CONTEXT_CELLS:
+        return ""
+    parts, empty = [], 0
+    for r1, c1, r2, c2 in rects:
+        for r in range(r1, r2 + 1):
+            for c in range(c1, c2 + 1):
+                f = sheet.formula_text(r, c)
+                shown = display_text(sheet, r, c)
+                if f is None and shown == "":
+                    empty += 1
+                    continue
+                parts.append(f"{addr(r, c)} = {shown!r}" + (f" [{f}]" if f else ""))
+    if not parts:
+        return f"[Selected cells: all {empty} empty]"
+    text = "[Selected cells: " + "; ".join(parts) + (f"; {empty} empty" if empty else "") + "]"
+    return text if len(text) <= MAX_CONTEXT_CHARS else ""
 
 
 def _rng(sheet, rect):

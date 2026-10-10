@@ -196,7 +196,8 @@ def load_xlsx(path, progress=None):
         return st
 
     needs_cache = []
-    sheets = book.worksheets
+    controls_ws = next((ws for ws in book.worksheets if ws.title == CONTROLS_SHEET), None)
+    sheets = [ws for ws in book.worksheets if ws is not controls_ws]
     for si, ws in enumerate(sheets):
         sh = Sheet(wb, ws.title)
         sh.xl = ws
@@ -313,6 +314,8 @@ def load_xlsx(path, progress=None):
         wb.active = 0
     if not wb.sheets:
         wb.sheets.append(Sheet(wb, "Sheet1"))
+    if controls_ws is not None:
+        _read_controls(controls_ws, wb)
 
     if needs_cache:
         _load_cached_values(path, wb, needs_cache)
@@ -366,6 +369,43 @@ def _write_validation_and_cf(ws, sh):
             if rule.xl_rule is not None and rule.rects:
                 cfl.add(" ".join(range_addr(*r) for r in rule.rects), rule.xl_rule)
         ws.conditional_formatting = cfl
+
+
+CONTROLS_SHEET = "_EkxelControls"
+
+
+def _write_controls(book, wb):
+    """Form controls (sliders/spinners) go in a very hidden sheet: one JSON object per row.
+    Excel doesn't show it; Ekxel reads it back. Removed when there are no controls."""
+    import json
+    if CONTROLS_SHEET in book.sheetnames:
+        book.remove(book[CONTROLS_SHEET])
+    rows = []
+    for sh in wb.sheets:
+        for c in getattr(sh, "controls", []):
+            rows.append(json.dumps({"sheet": sh.name, "kind": c["kind"], "place": list(c["place"]),
+                                    "link": list(c["link"]), "min": c["min"], "max": c["max"], "step": c["step"]}))
+    if not rows:
+        return
+    ws = book.create_sheet(CONTROLS_SHEET)
+    ws.sheet_state = "veryHidden"
+    ws["A1"] = "Ekxel form controls (sliders / spin buttons), one JSON object per row. Safe to delete."
+    for i, row in enumerate(rows, start=2):
+        ws.cell(row=i, column=1, value=row).data_type = "s"
+
+
+def _read_controls(ws, wb):
+    import json
+    from .ui.controls import make_control
+    for row in ws.iter_rows(min_row=2, max_col=1, values_only=True):
+        try:
+            d = json.loads(row[0])
+            sh = wb.get_sheet(d["sheet"])
+            if sh is not None:
+                sh.controls = sh.controls + [make_control(d["kind"], tuple(d["place"]), tuple(d["link"]),
+                                                          d["min"], d["max"], d["step"])]
+        except (TypeError, ValueError, KeyError):
+            continue
 
 
 def _update_defined_names(book, wb):
@@ -582,6 +622,7 @@ def save_xlsx(wb, path):
             ws.sheet_view.tabSelected = (i == wb.active)
     except (ValueError, IndexError, AttributeError):
         pass
+    _write_controls(book, wb)
     if reuse:
         _update_defined_names(book, wb)
     tmp = path + ".tmp~"

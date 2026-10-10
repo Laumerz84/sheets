@@ -139,5 +139,16 @@ def select_range(range: str, sheet: str | None = None) -> dict[str, Any]:
     return call("select_range", range=range, sheet=sheet)
 
 
+@server.tool()
+def add_control(kind: str, linked_cell: str, place: str | None = None, min: float = 0, max: float = 100,
+                step: float = 1, sheet: str | None = None) -> dict[str, Any]:
+    """Add a form control linked to a cell, like Excel's Scroll Bar / Spin Button. kind: 'scrollbar'
+    (a slider to drag) or 'spinner' (up/down arrows). Moving it sets linked_cell to a number between
+    min and max in multiples of step, live, so formulas using that cell update as the user drags.
+    place = the cells it covers (e.g. 'C4:F4' for a slider; default: next to the linked cell)."""
+    return call("add_control", kind=kind, linked_cell=linked_cell, place=place, min=min, max=max,
+                step=step, sheet=sheet)
+
+
 if __name__ == "__main__":
     server.run("stdio")

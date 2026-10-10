@@ -325,6 +325,9 @@ class MainWindow(QMainWindow):
         self._connect_grid()
         from .keytips import KeyTipController
         self.keytips = KeyTipController(self)
+        from .controls import ControlLayer
+        self.control_layer = ControlLayer(self)
+        self.grid.control_layer = self.control_layer
 
         self.stats_timer = QTimer(self)
         self.stats_timer.setSingleShot(True)
@@ -444,6 +447,10 @@ class MainWindow(QMainWindow):
 
         self.a_ins_rows = A("Insert Sheet &Rows", lambda: self.insert_rows_cols("row"), icon=S.lines_icon("insert_row"))
         self.a_ins_cols = A("Insert Sheet &Columns", lambda: self.insert_rows_cols("col"))
+        self.a_ins_slider = A("Slider (Scroll Bar)...", lambda: self.insert_control("scrollbar"),
+                              tip="A slider linked to a cell: drag it to change the cell's number")
+        self.a_ins_spinner = A("Spin Button...", lambda: self.insert_control("spinner"),
+                               tip="Up/down arrows linked to a cell: click to step its number")
         self.a_del_rows = A("Delete Sheet Ro&ws", lambda: self.delete_rows_cols("row"), icon=S.lines_icon("delete_row"))
         self.a_del_cols = A("Delete Sheet Colu&mns", lambda: self.delete_rows_cols("col"))
         self.a_insert_smart = A("Insert", self.insert_smart, ["Ctrl++", "Ctrl+Shift+="])
@@ -552,7 +559,7 @@ class MainWindow(QMainWindow):
 
         m = mb.addMenu("&Insert")
         for a in (self.a_ins_rows, self.a_ins_cols, self.a_new_sheet, None, self.a_autosum,
-                  self.a_insert_func, None, self.a_today, self.a_now):
+                  self.a_insert_func, None, self.a_today, self.a_now, None, self.a_ins_slider, self.a_ins_spinner):
             m.addSeparator() if a is None else m.addAction(a)
 
         m = mb.addMenu("F&ormat")
@@ -1874,6 +1881,7 @@ class MainWindow(QMainWindow):
             sh.merges = list(src.merges)
             sh.freeze = src.freeze
             sh.freeze_origin = src.freeze_origin
+            sh.controls = list(getattr(src, "controls", []))
             sh.show_grid = src.show_grid
             sh.zoom = src.zoom
             sh.recompute_extent()
@@ -2624,6 +2632,35 @@ class MainWindow(QMainWindow):
         box.setTextFormat(Qt.RichText)
         box.setText(text)
         box.exec()
+
+    # ================================================================ form controls
+    def insert_control(self, kind):
+        from .controls import ControlDialog, default_place
+        self._prep()
+        link = self.grid.sel.active
+        rect = self.grid.sel.rects[-1]
+        single = rect[0] == rect[2] and rect[1] == rect[3]
+        place = default_place(kind, link) if single else self.grid.clamp_rect(rect)
+        if not single:
+            link = (rect[0], max(0, rect[1] - 1))  # a selected strip: link the cell just left of it
+        dlg = ControlDialog(self, kind, link, place)
+        if dlg.exec() == QDialog.Accepted:
+            self._set_controls(self.sheet.controls + [dlg.result_ctl], "Insert Control")
+
+    def edit_control(self, ctl):
+        from .controls import ControlDialog
+        dlg = ControlDialog(self, ctl["kind"], ctl["link"], ctl["place"], ctl["min"], ctl["max"], ctl["step"],
+                            title="Format Control")
+        if dlg.exec() == QDialog.Accepted:
+            self._set_controls([dlg.result_ctl if c is ctl else c for c in self.sheet.controls], "Format Control")
+
+    def delete_control(self, ctl):
+        self._set_controls([c for c in self.sheet.controls if c is not ctl], "Delete Control")
+
+    def _set_controls(self, new, text, sheet=None):
+        sh = sheet or self.sheet
+        self.undo.push(MetaCommand(self, sh, {"controls": (list(sh.controls), list(new))}, text, relayout=False))
+        self.grid.update()
 
     def show_wishlist(self):
         from .extras import WishlistDialog

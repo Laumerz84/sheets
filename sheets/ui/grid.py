@@ -572,6 +572,15 @@ class Grid(QWidget):
     def paintEvent(self, ev):
         if self.sheet is None:
             return
+        layer = getattr(self, "control_layer", None)
+        if layer is not None and not getattr(self, "_controls_pending", False):
+            # place the form-control widgets after this paint (moving widgets mid-paint is unsafe)
+            self._controls_pending = True
+
+            def run():
+                self._controls_pending = False
+                layer.sync()
+            QTimer.singleShot(0, run)
         p = QPainter(self)
         W, H = self.width(), self.height()
         p.fillRect(0, 0, W, H, S.CELL_BG)
